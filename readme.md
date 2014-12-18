@@ -14,12 +14,15 @@ max_allowed_packet = 32M oder höher
 2	Installationsschritte
 
 2.1	Schritt 1
+
 Dateien und Verzeichnisse komplett in das Root-Verzeichnis des Webservers (z.B. httpdocs etc.) kopieren 
 
 2.2	Schritt 2
+
 Datenbank-Dump „dp-datenbunk.sql“ mittels phpMyAdmin oder Terminal in eine leere Datenbank auf dem Server importieren. (Terminal-Befehl: mysql –u [DB Benutzername>]-p [DB Name] < dp-datenbunk.sql , anschließend wird nach DP Passwort gefragt)
 
 2.3	Schritt 3
+
 Datei /sites/default/settings.php konfigurieren:
 Ab Zeile 218:
       'database' => '...',   - Datenbank Name                                                                                                                               
@@ -27,6 +30,7 @@ Ab Zeile 218:
       'password' => '...',    - Datenbank Passwort
       
 2.4	Schritt 4
+
 Crontab in Terminal einstellen
 # crontab –e
 
@@ -37,6 +41,7 @@ Folgende Zeile hinzufügen und crontab-Konfiguration speichern:
 Wenn nötig, Crontab neustarten
 
 2.5	Schritt 5
+
 Als Administrator anmelden:
 E-Mail: bst-bf-admin@nexum.de
 Passwort: bst-bf-admin
