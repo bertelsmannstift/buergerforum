@@ -5,13 +5,9 @@ Unless stated otherwise, the GPL license applies to the files in this repository
 Copyright (C) 2013 Bertelsmann Stiftung
 
 BürgerForum
-
 Carl-Bertelsmann-Str. 256
-
 33311 Gütersloh
-
 Germany
-
 http://www.bertelsmann-stiftung.de
 
 The Bertelsmann Stiftung is an independent foundation under civil law, governed by Sec. 1 of the Foundation Act of the state of North Rhine-Westphalia.
