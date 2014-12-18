@@ -1,20 +1,20 @@
-1	Systemvoraussetzungen
+1     Systemvoraussetzungen
 Webserver mit Apache 2.x 
-Datenbank MySQL 5.0.15 oder höher mit PDO (für die Installation wird eine leere Datenbank benötigt)
-PHP 5.2.5 oder höher (5.3 empfohlen)
-Speicherplatz 300 MB oder höher
+Datenbank MySQL 5.0.15 oder hÃ¶her mit PDO (fÃ¼r die Installation wird eine leere Datenbank benÃ¶tigt)
+PHP 5.2.5 oder hÃ¶her (5.3 empfohlen)
+Speicherplatz 300 MB oder hÃ¶her
 
 Einstellungen php.ini
-memory_limit=512M oder höher
-max_execution_time 300 oder höher
+memory_limit=512M oder hÃ¶her
+max_execution_time 300 oder hÃ¶her
 Einstellungen my.cnf 
-max_allowed_packet = 32M oder höher
+max_allowed_packet = 32M oder hÃ¶her
 
 2	Installationsschritte
 2.1	Schritt 1
 Dateien und Verzeichnisse komplett in das Root-Verzeichnis des Webservers (z.B. httpdocs etc.) kopieren 
 2.2	Schritt 2
-Datenbank-Dump „dp-datenbunk.sql“ mittels phpMyAdmin oder Terminal in eine leere Datenbank auf dem Server importieren. (Terminal-Befehl: mysql –u [DB Benutzername>]-p [DB Name] < dp-datenbunk.sql , anschließend wird nach DP Passwort gefragt)
+Datenbank-Dump â€ždp-datenbunk.sqlâ€œ mittels phpMyAdmin oder Terminal in eine leere Datenbank auf dem Server importieren. (Terminal-Befehl: mysql â€“u [DB Benutzername>]-p [DB Name] < dp-datenbunk.sql , anschlieÃŸend wird nach DP Passwort gefragt)
 2.3	Schritt 3
 Datei /sites/default/settings.php konfigurieren:
 Ab Zeile 218:
@@ -23,13 +23,13 @@ Ab Zeile 218:
       'password' => '...',    - Datenbank Passwort
 2.4	Schritt 4
 Crontab in Terminal einstellen
-# crontab –e
+# crontab â€“e
 
-Folgende Zeile hinzufügen und crontab-Konfiguration speichern:
+Folgende Zeile hinzufÃ¼gen und crontab-Konfiguration speichern:
 
 * * * * wget -O - -q -t 1  http://www.IHRE-WEBSITE.de /sites/all/modules/contrib/elysia_cron/cron.php?cron_key=XHCCQBIV-aPWhji8dX0Ka-u_PcH3dmphIIr_hQOCD4M
 
-Wenn nötig, Crontab neustarten
+Wenn nÃ¶tig, Crontab neustarten
 2.5	Schritt 5
 Als Administrator anmelden:
 E-Mail: bst-bf-admin@nexum.de
