@@ -1,0 +1,1041 @@
+<?php
+
+define('EDITOR_ROLE_NAME', 'editor');
+
+/**
+ * @file
+ *
+ * Create CTools content type for panels .
+*/
+
+/**
+ * Implements hook_ctools_plugin_directory().
+*/
+function bf_task_ctools_plugin_directory($owner, $plugin_type) {
+  if ($owner == 'ctools' && $plugin_type == 'content_types') {
+    return 'plugins/content_types';
+  }
+}
+
+
+/**
+ * Implements hook_permission().
+ */
+function bf_task_permission() {
+  return array(
+      'process task' => array(
+          'title' => t('Process task'),
+      ),
+  );
+}
+
+/**
+ * Implementation of hook_init.
+ */
+function bf_task_init(){
+  global $user;
+
+  if(!empty($_SESSION['bf_task_poll_hide_vote'])){
+    $query = db_select('field_data_field_poll', 'fp')
+    ->fields('fp', array('entity_id'))
+    ->condition('fp.entity_type', 'node')
+    ->condition('fp.field_poll_target_id', $_SESSION['bf_task_poll_hide_vote'])
+    ->execute();
+
+    foreach ($query as $row){
+      if(!empty($row->entity_id)){
+        $node = node_load($row->entity_id);
+        if($node){
+          bf_task_exclude_user($node, $user->uid, true);
+        }
+      }
+    }
+    unset($_SESSION['bf_task_poll_hide_vote']);
+  }
+
+  if(!empty($_SESSION['bf_task_advpoll_results_vote'])){
+    $query = db_select('field_data_field_poll', 'fp')
+      ->fields('fp', array('entity_id'))
+      ->condition('fp.entity_type', 'node')
+      ->condition('fp.field_poll_target_id', $_SESSION['bf_task_advpoll_results_vote'])
+      ->execute();
+
+    foreach ($query as $row){
+      if(!empty($row->entity_id)){
+        $node = node_load($row->entity_id);
+        if($node){
+          bf_task_exclude_user($node, $user->uid, true);
+        }
+      }
+    }
+    unset($_SESSION['bf_task_advpoll_results_vote']);
+  }
+}
+
+/**
+ * Implementation of hook_preprocess_page.
+ */
+function bf_task_preprocess_page(&$variables){
+  $current_menu_item = menu_get_item();
+
+  if ('home' === $current_menu_item['path']) {
+    global $language;
+    $title = t('Tasks');
+    drupal_set_title($title);
+  }
+
+  if(!empty($_SESSION['bf_task_poll_results_vote'])){
+    //show results phase
+    $_SESSION['bf_task_poll_hide_vote'] = $_SESSION['bf_task_poll_results_vote'];
+    unset($_SESSION['bf_task_poll_results_vote']);
+  }
+
+  $title = drupal_set_title(NULL, PASS_THROUGH);
+  $current_menu_item = menu_get_item();
+  if ('admin/people/create' === $current_menu_item['path']) {
+    $title = t('Create new account');
+  }
+
+  drupal_set_title($title, PASS_THROUGH);
+}
+
+/**
+ * Implementation of hook_menu().
+ */
+function bf_task_menu() {
+  $items = array();
+  $items['node/%node/process_task'] = array(
+      'title' => '',
+      'page callback' => 'bf_task_process_task',
+      'page arguments' => array(1),
+      'access callback' => TRUE,
+      'access arguments' => array('process task', 1),
+      'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+
+/**
+ * Menu item handler for node/%node/process_task.
+ */
+function bf_task_process_task($node){
+  global $user;
+  $account = user_load($user->uid);
+  if($node && $node->type == 'task'){
+    //check for finish ability
+    $task_type_field = field_get_items('node', $node, 'field_task_type');
+    if(!empty($task_type_field[0]['value'])){
+      $task_type = $task_type_field[0]['value'];
+      if($task_type == 'group task'){
+        if($user->uid > 0 && isset($node->field_permanent_task[LANGUAGE_NONE][0]['value']) && $node->field_permanent_task[LANGUAGE_NONE][0]['value'] == 0){
+          bf_task_exclude_user($node, $user->uid, true);
+        }
+        //check for redirect
+        if(!empty($node->field_link[LANGUAGE_NONE][0]['url'])){
+          drupal_goto($node->field_link[LANGUAGE_NONE][0]['url']);
+        }
+      }
+      if($task_type == 'fill profile'){
+        bf_task_close_fill_profile_tasks($user);
+        drupal_goto('user/'.$user->uid.'/edit');
+      }
+      if($task_type == 'create account'){
+        drupal_goto('user/register');
+      }
+      if($task_type == 'answer question'){
+        $question = bf_task_get_first_unanswered_question($account);
+        if(!empty($question->nid)){
+          drupal_goto('node/'.$question->nid);
+        }
+      }
+      if($task_type == 'vote'){
+        drupal_goto('buergerprogramm');
+      }
+      if($task_type == 'edit proposal'){
+        $proposal = bf_task_get_editor_first_related_proposal($account);
+        if(!empty($proposal->entity_id)){
+          drupal_goto('node/'.$proposal->entity_id);
+        }
+      }
+    }    
+  }
+  return true;
+}
+
+/**
+ * Implementation of hook_form_Form_ID_alter().
+ */
+function bf_task_form_task_node_form_alter(&$form, &$form_state, $form_id){
+  $state_group = array(
+      'visible' => array(
+        ':input[name="field_task_type[und]"]' => array('value' => 'group task'),
+      ),
+  );
+  $state_users = array(
+    'visible' => array(
+      ':input[name="field_roles_committees[und]"]' => array('value' => '_none'),
+      ':input[name="field_task_type[und]"]' => array('value' => 'group task'),
+    ),
+  );
+  $state_roles = array(
+      'visible' => array(
+          ':input[name="field_roles_committees[und]"]' => array('value' => 'roles'),
+          ':input[name="field_task_type[und]"]' => array('value' => 'group task'),
+      ),
+  );
+  $state_committees = array(
+      'visible' => array(
+          ':input[name="field_roles_committees[und]"]' => array('value' => 'committees'),
+          ':input[name="field_task_type[und]"]' => array('value' => 'group task'),
+      ),
+  );
+  $form['field_users']['#states'] = $state_users;
+  $form['field_committees']['#states'] = $state_committees;
+  $form['field_roles']['#states'] = $state_roles;
+  $form['field_roles_committees']['#states'] = $state_group;
+
+  $form['field_task_type']['reassign_task'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Reassign task to all users')
+  );
+  $form['field_roles_committees'][LANGUAGE_NONE]['#options']['_none'] = t('Users');
+  // Get users.
+  $query = db_select('users', 'u');
+  $query->innerJoin('field_data_field_displayed_name' , 'dn', 'dn.entity_id=u.uid');
+  $query->fields('u', array('uid'))
+    ->fields('dn', array('field_displayed_name_value'))
+    ->condition('dn.entity_type', 'user')
+    ->condition('u.status', 1);
+  $all_users = $query->execute()->fetchAllKeyed();
+
+  $users = array(
+    '_none' => t('- None -'),
+    '0' => t('Anonymous')
+  );
+  $users = $users + $all_users;
+  $form['field_users'][LANGUAGE_NONE]['#options'] = $users;
+
+  $roles = $form['field_roles'][LANGUAGE_NONE]['#options'];
+  foreach ($roles as $role_key => $role) {
+    $form['field_roles'][LANGUAGE_NONE]['#options'][$role_key] = t($role);
+  }
+
+  array_unshift($form['#submit'], 'bf_task_form_task_node_form_submit');
+}
+
+/**
+ * Implementation of task_node_form submit handler.
+ */
+function bf_task_form_task_node_form_submit(&$form, &$form_state){
+  if(isset($form_state['values']['field_task_type']['reassign_task'])){
+    $form_state['values']['reassign_task'] = $form_state['values']['field_task_type']['reassign_task'];
+  }else{
+    $form_state['values']['reassign_task'] = 0;
+  }
+  $form_state['values']['after_submit'] = 1;
+  $weight = 0;
+  if ($form_state['values']['field_task_type'][LANGUAGE_NONE][0]['value'] == 'create account') {
+    $weight = 100;
+  }
+  $form_state['values']['field_task_weight'][LANGUAGE_NONE][0]['value'] = $weight;
+}
+
+
+/**
+ * Implementation of hook_form_Form_ID_alter().
+ */
+function bf_task_form_poll_view_voting_alter(&$form, &$form_state, $form_id){
+  array_unshift($form['vote']['#submit'], 'bf_task_form_poll_view_voting_submit');
+}
+
+
+function bf_task_form_advpoll_choice_form_alter(&$form, &$form_state, $form_id){
+  array_unshift($form['#submit'], 'bf_task_form_advpoll_choice_form_submit');
+}
+
+
+/**
+ * poll_view_voting form submit handler.
+ */
+function bf_task_form_poll_view_voting_submit(&$form, &$form_state){
+  global $user;
+  if(isset($form_state['complete form']['#node']->nid)){
+    $vote = $form_state['complete form']['#node']->nid;
+    if($vote){
+      //check if we need to show poll results and write $vote to session in case of yes
+      if(variable_get('bf_task_show_poll_results', 0) != 1){
+        $_SESSION['bf_task_poll_results_vote'] = $vote;
+      }else{
+        $query = db_select('field_data_field_poll', 'fp')
+        ->fields('fp', array('entity_id'))
+        ->condition('fp.entity_type', 'node')
+        ->condition('fp.field_poll_target_id', $vote)
+        ->execute();
+
+        foreach ($query as $row){
+          if(!empty($row->entity_id)){
+            $node = node_load($row->entity_id);
+            if($node){
+              bf_task_exclude_user($node, $user->uid, false);
+              node_save($node);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * advpoll_choice form submit handler.
+ */
+function bf_task_form_advpoll_choice_form_submit(&$form, &$form_state){
+  global $user;
+  if(isset($form_state['build_info']['args'][0]->nid)){
+    $vote = $form_state['build_info']['args'][0]->nid;
+    if($vote){
+      //check if we need to show poll results and write $vote to session in case of yes
+      if(variable_get('bf_task_show_poll_results', 0) != 1){
+        $_SESSION['bf_task_advpoll_results_vote'] = $vote;
+      }else{
+        $query = db_select('field_data_field_poll', 'fp')
+          ->fields('fp', array('entity_id'))
+          ->condition('fp.entity_type', 'node')
+          ->condition('fp.field_poll_target_id', $vote)
+          ->execute();
+
+        foreach ($query as $row){
+          if(!empty($row->entity_id)){
+            $node = node_load($row->entity_id);
+            if($node){
+              bf_task_exclude_user($node, $user->uid, false);
+              node_save($node);
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implementation of hook_node_presave.
+ */
+function bf_task_node_presave($node){
+  if(isset($node->field_task_type[LANGUAGE_NONE][0]['value']) &&
+  $node->field_task_type[LANGUAGE_NONE][0]['value'] != 'group task'){
+    $node->field_link[LANGUAGE_NONE][0]['url'] = '[process task]';
+    if(empty($node->field_link[LANGUAGE_NONE][0]['title'])){
+      $node->field_link[LANGUAGE_NONE][0]['title'] = t('Process task');
+    }
+  }
+  //autoupdate link
+  if(!empty($node->after_submit)){
+    $node->after_submit = false;
+    //process node field values only after manual submission
+    if(!empty($node->reassign_task)){
+      if(!empty($node->field_task_finished[LANGUAGE_NONE])){
+        foreach ($node->field_task_finished[LANGUAGE_NONE] as $id=>$item){
+          if(!empty($item['target_id'])){
+            unset($node->field_task_finished[LANGUAGE_NONE][$id]);
+            bf_task_include_user($node, $item['target_id']);
+          }
+        }
+      }
+    }
+    if(isset($node->field_task_type[LANGUAGE_NONE][0]['value']) &&
+    $node->field_task_type[LANGUAGE_NONE][0]['value'] == 'group task'){
+      //group task. have to check roles and committees
+      if(isset($node->field_roles_committees[LANGUAGE_NONE][0]['value'])){
+        if($node->field_roles_committees[LANGUAGE_NONE][0]['value'] == 'roles'){
+          if(!empty($node->field_roles[LANGUAGE_NONE])){
+            $roles = array();
+            foreach($node->field_roles[LANGUAGE_NONE] as $key => $value){
+              $roles[] = $value['value'];
+            }
+            bf_task_exclude_users($node);
+            bf_task_include_users_by_roles($node, $roles);
+          }
+        }
+        if($node->field_roles_committees[LANGUAGE_NONE][0]['value'] == 'committees'){
+          if(!empty($node->field_committees[LANGUAGE_NONE])){
+            $coms = array();
+            foreach($node->field_committees[LANGUAGE_NONE] as $key => $value){
+              $coms[] = $value['target_id'];
+            }
+            bf_task_exclude_users($node);
+            bf_task_include_users_by_committees($node, $coms);
+          }
+        }
+      }
+    }else{
+      bf_task_exclude_users($node);
+      bf_task_include_all_users($node, false);
+    }
+  }
+
+  if ($node->type == 'proposal') {
+    $editors = field_get_items('node', $node, 'field_editors');
+    if (!empty($editors)) {
+      foreach ($editors as $editor) {
+        $user = user_load($editor['target_id']);
+        bf_task_include_user_to_all_tasks_by_type($user, array('edit proposal'));
+      }
+    }
+  }
+}
+
+/**
+ * Implementation of hook_user_insert.
+ */
+function bf_task_user_insert(&$edit, $account, $category){
+  bf_task_include_user_by_roles_to_all_tasks($account);
+  bf_task_reinclude_user_by_committees_to_all_tasks($account);
+  $task_types = array(
+      'answer question',
+      'fill profile',
+      'vote'
+  );
+  bf_task_include_user_to_all_tasks_by_type($account, $task_types);
+  if (bf_task_check_user_profile_fullfilled($account)) {
+    bf_task_close_fill_profile_tasks($account);
+  }
+}
+
+/**
+ * Implementation of hook_user_update.
+ */
+/*function bf_task_user_update(&$edit, $account, $category){
+bf_task_include_user_by_roles_to_all_tasks($account);
+ bf_task_exclude_user_by_roles_from_all_tasks($account);
+
+ bf_task_reinclude_user_by_committees_to_all_tasks($account);
+ bf_task_close_fill_profile_tasks($account);
+ $task_types = array('fill profile');
+ bf_task_include_user_to_all_tasks_by_type($account, $task_types);
+}*/
+
+/**
+ * Implementation of hook_node_update.
+ */
+function bf_task_node_update($node){
+  global $user;
+  if($node->type == 'proposal'){
+    //if role editor changed check maybe we have to include or exclude user from group task with role selected
+    bf_task_include_user_by_roles_to_all_tasks($user);
+    bf_task_exclude_user_by_roles_from_all_tasks($user);
+    //check if editor completed "edit proposal" task
+    
+    //check if current user is edit of current proposal
+    $is_editor = false;
+    $field = field_get_items('node', $node, 'field_editors');
+    if(!empty($field)){
+      foreach ( $field as $editor ) {
+        if($user->uid == $editor['target_id']){
+          $is_editor = true;
+          break; 
+        }        
+      }      
+    }
+    if(!$is_editor){
+      return;
+    }
+    //check all "edit proposal" tasks and exclude user
+    //bf_task_close_edit_proposal_tasks($user);
+  }
+}
+
+/**
+ * Implementation of hook_comment_insert.
+ */
+function bf_task_comment_insert($comment){
+  global $user;
+  $questions = bf_task_check_user_has_unanswered_questions($user); 
+  if($questions){
+    return;
+  }
+  // all questions answered we have to close all answer question tasks
+  //bf_task_close_answer_question_tasks($user);
+}
+
+/**
+ * Include 1 user to all tasks based on user roles.
+ */
+function bf_task_include_user_to_all_tasks_by_type($account, $task_types = array()){
+  if($account->uid > 0){    
+    $query = db_select('field_data_field_task_type', 'ftt');
+    $query->innerJoin('node', 'n', 'ftt.entity_id = n.nid AND ftt.entity_type = :type', array(':type' => 'node'));
+    $query->fields('ftt', array('entity_id'));
+    $query->condition('ftt.field_task_type_value', $task_types, 'IN');
+    $query->condition('n.status', NODE_PUBLISHED);
+    $result = $query->execute();
+    foreach ($result as $row){
+      $node = node_load($row->entity_id);
+      if($node){        
+        bf_task_include_user($node, $account->uid, true, true);
+      }
+    }
+  }
+}
+
+/**
+ * Include 1 user to all tasks based on user roles.
+ */
+function bf_task_include_user_by_roles_to_all_tasks($account){
+  $roles = array();
+  if(!empty($account->roles)){
+    $rids = array_keys($account->roles);
+    $query = db_select('role' ,'r')
+    ->fields('r', array('name'))
+    ->condition('r.rid', $rids, 'IN')
+    ->execute();
+    foreach ($query as $row){
+      $roles[] = $row->name;
+    }
+    // check if user is editor
+    if(bf_task_check_user_is_editor_related_proposals($account)){
+      $roles[] = 'Editor';
+    }
+    $query = db_select('field_data_field_roles', 'fr');
+    $query->innerJoin('field_data_field_roles_committees', 'frc', 'fr.entity_id = frc.entity_id AND fr.entity_type = :type', array(':type' => 'node'));
+    $query->innerJoin('node', 'n', 'fr.entity_id = n.nid');
+    $query->fields('fr', array('entity_id'));
+    $query->condition('frc.field_roles_committees_value', 'roles');
+    $query->condition('fr.field_roles_value', $roles, 'IN');
+    $query->condition('n.status', NODE_PUBLISHED);
+    $result = $query->execute();
+    foreach ($result as $row){
+      $node = node_load($row->entity_id);
+      if($node){
+        bf_task_include_user($node, $account->uid, true);
+      }
+    }
+  }
+}
+
+/**
+ * Include 1 user to all tasks based on user roles.
+ */
+function bf_task_reinclude_user_by_committees_to_all_tasks($account){
+  if(isset($account->original)){
+    //remove from old committee
+    $original = $account->original;
+    if(isset($original->field_committee[LANGUAGE_NONE][0]['target_id'])){
+      if(isset($account->field_committee[LANGUAGE_NONE][0]['target_id']) &&
+      $original->field_committee[LANGUAGE_NONE][0]['target_id'] ==
+      $account->field_committee[LANGUAGE_NONE][0]['target_id']){
+        //nothing to change
+        return;
+      }
+      $old_committee = $original->field_committee[LANGUAGE_NONE][0]['target_id'];
+      $query = db_select('field_data_field_committees', 'fc');
+      $query->innerJoin('field_data_field_roles_committees', 'frc', 'fc.entity_id = frc.entity_id AND fc.entity_type = :type', array(':type' => 'node'));
+      $query->innerJoin('node', 'n', 'fc.entity_id = n.nid');
+      $query->fields('fc', array('entity_id'));
+      $query->condition('frc.field_roles_committees_value', 'committees');
+      $query->condition('fc.field_committees_target_id', $old_committee);
+      $query->condition('n.status', NODE_PUBLISHED);
+      $result = $query->execute();
+      foreach ($result as $row){
+        $node = node_load($row->entity_id);
+        if($node){
+          bf_task_exclude_user($node, $account->uid, true);
+        }
+      }
+
+    }
+  }
+  if(!empty($account->field_committee[LANGUAGE_NONE][0]['target_id'])){
+    $committee = $account->field_committee[LANGUAGE_NONE][0]['target_id'];
+    
+    $query = db_select('field_data_field_committees', 'fc');
+    $query->innerJoin('field_data_field_roles_committees', 'frc', 'fc.entity_id = frc.entity_id AND fc.entity_type = :type', array(':type' => 'node'));
+    $query->innerJoin('node', 'n', 'fc.entity_id = n.nid');
+    $query->fields('fc', array('entity_id'));
+    $query->condition('frc.field_roles_committees_value', 'committees');
+    $query->condition('fc.field_committees_target_id', $committee);
+    $query->condition('n.status', NODE_PUBLISHED);
+    $result = $query->execute();
+    foreach ($result as $row){
+      $node = node_load($row->entity_id);
+      if($node){
+        bf_task_include_user($node, $account->uid, true);
+      }
+    }
+  }
+}
+
+/**
+ * Include 1 user to all tasks based on user roles.
+ */
+function bf_task_exclude_user_by_roles_from_all_tasks($account){
+  $roles = array();
+  if(!empty($account->roles)){
+    $rids = array_keys($account->roles);
+    $query = db_select('role' ,'r')
+    ->fields('r', array('name'))
+    ->condition('r.rid', $rids, 'IN')
+    ->execute();
+    foreach ($query as $row){
+      $roles[] = $row->name;
+    }
+    // check if user is editor
+    if(bf_task_check_user_is_editor_related_proposals($account)){
+      $roles[] = 'Editor';
+    }
+    //get users should stay included
+    $stay = array();
+    $query = db_select('field_data_field_roles', 'fr');
+    $query->innerJoin('field_data_field_roles_committees', 'frc', 'fr.entity_id = frc.entity_id AND fr.entity_type = :type', array(':type' => 'node'));
+    $query->innerJoin('node', 'n', 'fr.entity_id = n.nid');
+    $query->fields('fr', array('entity_id'));
+    $query->condition('frc.field_roles_committees_value', 'roles');
+    $query->condition('fr.field_roles_value', $roles, 'IN');
+    $query->condition('n.status', NODE_PUBLISHED);
+    $result = $query->execute();
+    foreach ($result as $row){
+      $stay[] = $row->entity_id;
+    }
+
+    $query = db_select('field_data_field_roles', 'fr');
+    $query->innerJoin('field_data_field_roles_committees', 'frc', 'fr.entity_id = frc.entity_id AND fr.entity_type = :type', array(':type' => 'node'));
+    $query->innerJoin('node', 'n', 'fr.entity_id = n.nid');
+    $query->fields('fr', array('entity_id'));
+    $query->condition('frc.field_roles_committees_value', 'roles');
+    $query->condition('n.status', NODE_PUBLISHED);
+    $result = $query->execute();
+
+    foreach ($result as $row){
+      if(!in_array($row->entity_id, $stay)){
+        $node = node_load($row->entity_id);
+        if($node){
+          bf_task_exclude_user($node, $account->uid, true);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * include users by roles.
+ */
+function bf_task_include_users_by_roles(&$node, $roles = array()){
+  $uids = array();
+  if(in_array(EDITOR_ROLE_NAME, $roles)){
+    $query = db_select('field_data_field_editors', 'fe')->distinct();
+    $query->fields('fe', array('field_editors_target_id'));
+    $result = $query->execute();
+    foreach ($result as $row){
+      $uids[] = $row->field_editors_target_id;
+    }
+  }
+  $query = db_select('users', 'u');
+  $query->innerJoin('users_roles', 'ur', 'ur.uid = u.uid');
+  $query->innerJoin('role', 'r', 'r.rid = ur.rid');
+  $query->fields('u', array('uid'))
+  ->condition('r.name', $roles, 'IN');
+  $result = $query->execute();
+  foreach ($result as $row){
+    $uids[] = $row->uid;
+  }
+  if(in_array('guest',$roles)){
+    $uids[] = 0;
+  }
+  if(in_array('anonymous user',$roles)){
+    $uids[] = 0;
+  }
+  
+ 
+  if(in_array('authenticated user', $roles) || in_array('user', $roles)){
+    $query = db_select('users', 'u');
+    $query->fields('u', array('uid'))
+    ->condition('u.uid', 0, '>');
+    $result = $query->execute();
+    foreach ($result as $row){
+      $user = user_load($row->uid);
+      if($user && !bf_task_check_user_is_editor_related_proposals($user)){
+        //user should not be an editor
+        if(count($user->roles) == 1){
+          //authenticated users only, without other roles
+          $uids[] = $row->uid;
+        }
+        
+      }      
+    }
+  }
+  $uids = array_unique($uids);
+  bf_task_include_users($node, $uids);
+}
+
+/**
+ * include users by committees.
+ */
+function bf_task_include_users_by_committees(&$node, $coms = array()){
+  $query = db_select('field_data_field_committee', 'fc')
+  ->fields('fc', array('entity_id'))
+  ->condition('fc.entity_type', 'user')
+  ->condition('fc.field_committee_target_id', $coms, 'IN')
+  ->execute();
+  $uids = array();
+  foreach ($query as $row){
+    $uids[] = $row->entity_id;
+  }
+  $uids = array_unique($uids);
+  bf_task_include_users($node, $uids);
+}
+
+/**
+ * Check if profile full filled and close profile tasks.
+ */
+function bf_task_close_fill_profile_tasks($account){
+  /*if(!bf_task_check_user_profile_fullfilled($account)){
+    return;
+  }else{*/
+    $query = db_select('field_data_field_users', 'fu');
+    $query->innerJoin('field_data_field_task_type', 'ftt', 'ftt.entity_id = fu.entity_id AND ftt.entity_type = :type', array(':type'=>'node'));
+    $query->fields('fu', array('entity_id'));
+    $query->condition('ftt.field_task_type_value', 'fill profile');
+    $query->condition('fu.field_users_target_id', $account->uid);
+    $result = $query->execute();
+    foreach ($result as $row){
+      if($row->entity_id){
+        $node = node_load($row->entity_id);
+        bf_task_exclude_user($node, $account->uid, true);
+      }      
+    }
+  //}
+}
+
+
+/**
+ * Close edit proposal tasks.
+ */
+function bf_task_close_edit_proposal_tasks($account){
+  $query = db_select('field_data_field_users', 'fu');
+  $query->innerJoin('field_data_field_task_type', 'ftt', 'ftt.entity_id = fu.entity_id AND ftt.entity_type = :type', array(':type'=>'node'));
+  $query->fields('fu', array('entity_id'));
+  $query->condition('ftt.field_task_type_value', 'edit proposal');
+  $query->condition('fu.field_users_target_id', $account->uid);
+  $result = $query->execute();
+  foreach ($result as $row){
+    if($row->entity_id){
+      $node = node_load($row->entity_id);
+      bf_task_exclude_user($node, $account->uid, true);
+    }
+  }  
+}
+
+/**
+ * Close answer question tasks.
+ */
+function bf_task_close_answer_question_tasks($account){
+  $query = db_select('field_data_field_users', 'fu');
+  $query->innerJoin('field_data_field_task_type', 'ftt', 'ftt.entity_id = fu.entity_id AND ftt.entity_type = :type', array(':type'=>'node'));
+  $query->fields('fu', array('entity_id'));
+  $query->condition('ftt.field_task_type_value', 'answer question');
+  $query->condition('fu.field_users_target_id', $account->uid);
+  $result = $query->execute();
+  foreach ($result as $row){
+    if($row->entity_id){
+      $node = node_load($row->entity_id);
+      bf_task_exclude_user($node, $account->uid, true);
+    }
+  }
+}
+
+/**
+ * Include user to the task.
+ */
+function bf_task_include_user(&$node, $uid, $save = false, $reassign = false){
+  $target_item = 0;
+  if($reassign){
+    if(!empty($node->field_task_finished[LANGUAGE_NONE])){
+      foreach ($node->field_task_finished[LANGUAGE_NONE] as $id=>$item){
+        if(!empty($item['target_id']) && $item['target_id'] == $uid){
+          unset($node->field_task_finished[LANGUAGE_NONE][$id]);
+        }
+      }
+    }    
+  }
+  if(!empty($node->field_users[LANGUAGE_NONE])){
+    foreach ($node->field_users[LANGUAGE_NONE] as $id=>$item){
+      if($item['target_id'] == $uid){
+        $target_item = $id;
+        break;
+      }else{
+        $target_item = $id + 1;
+      }
+    }
+  }
+  if(!bf_task_check_user_task_finished($node->nid, $uid)){
+    $node->field_users[LANGUAGE_NONE][$target_item]['target_id'] = $uid;
+  }
+  if($save){
+    node_save($node);
+  }
+}
+
+/**
+ * Exclude user from the task.
+ */
+function bf_task_exclude_user(&$node, $uid, $save = false){
+  if(!empty($node->field_users[LANGUAGE_NONE])){
+    foreach ($node->field_users[LANGUAGE_NONE] as $id=>$item){
+      if($item['target_id'] == $uid){
+        unset($node->field_users[LANGUAGE_NONE][$id]);
+        break;
+      }
+    }
+  }
+
+  bf_task_mark_as_finished($node, $uid, false);
+
+  if($save){
+    node_save($node);
+  }
+}
+
+function bf_task_mark_as_finished(&$node, $uid, $save = false){
+  $target_item = 0;
+  if(!empty($node->field_task_finished[LANGUAGE_NONE])){
+    foreach ($node->field_task_finished[LANGUAGE_NONE] as $id=>$item){
+      if($item['target_id'] == $uid){
+        $target_item = $id;
+        break;
+      }else{
+        $target_item = $id + 1;
+      }
+    }
+  }
+  $node->field_task_finished[LANGUAGE_NONE][$target_item]['target_id'] = $uid;
+
+  if($save){
+    node_save($node);
+  }
+}
+
+
+/**
+ * Include users to the task.
+ */
+function bf_task_include_users(&$node, $uids = array(), $save = false){
+  $target_item = 0;
+  if(!empty($node->field_users[LANGUAGE_NONE])){
+    foreach ($node->field_users[LANGUAGE_NONE] as $id=>$item){
+      $item_id = array_search($item['target_id'], $uids);
+      if($item_id !== false){
+        unset($item_id);
+      }
+      $target_item = $id + 1;
+    }
+  }
+  $delta = 0;
+  foreach ($uids as $uid){
+    if(!bf_task_check_user_task_finished($node->nid, $uid)){
+      $node->field_users[LANGUAGE_NONE][$target_item + $delta]['target_id'] = $uid;
+      $delta ++;
+    }
+  }
+  if($save){
+    node_save($node);
+  }
+}
+
+/**
+ * Exclude users from task.
+ */
+function bf_task_exclude_users(&$node, $save = false){
+  if(!empty($node->field_users[LANGUAGE_NONE])){
+    unset($node->field_users[LANGUAGE_NONE]);
+  }
+  if($save){
+    node_save($node);
+  }
+}
+
+/**
+ * Include all users to the task.
+ */
+function bf_task_include_all_users(&$node, $save = false){
+  $query = db_select('users', 'u')
+  ->fields('u', array('uid'))
+  ->execute();
+  $uids = array();
+  foreach ($query as $row){
+    $uids[] = $row->uid;
+  }
+  bf_task_include_users($node, $uids, $save);
+}
+
+/**
+ * Check if user already finished the task.
+ */
+function bf_task_check_user_task_finished($nid, $uid){
+  $object = db_select('field_data_field_task_finished', 'ftf')
+  ->fields('ftf')
+  ->condition('ftf.field_task_finished_target_id', $uid)
+  ->condition('ftf.entity_id', $nid)
+  ->condition('ftf.entity_type', 'node')
+  ->execute()
+  ->fetchObject();
+  if(empty($object)){
+    return false;
+  }else{
+    return true;
+  }
+}
+
+/**
+ * Check if user profile full filled.
+ */
+function bf_task_check_user_profile_fullfilled($user){
+  if(!empty($user->field_first_name[LANGUAGE_NONE][0]['value']) &&
+  !empty($user->field_last_name[LANGUAGE_NONE][0]['value']) &&
+  !empty($user->field_displayed_name[LANGUAGE_NONE][0]['value']) &&
+  !empty($user->picture) &&
+  !empty($user->field_sex[LANGUAGE_NONE][0]['value'])
+  ){
+    $user_phone = variable_get('additional_user_field_phone', FALSE);
+    $user_title = variable_get('additional_user_field_title', FALSE);
+    $user_education = variable_get('additional_user_field_education', FALSE);
+    $user_sphere_of_activity = variable_get('additional_user_field_sphere_of_activity', FALSE);
+    $user_website = variable_get('additional_user_field_website', FALSE);
+    if ($user_phone) {
+      if (empty($user->field_phone[LANGUAGE_NONE][0]['value'])) {
+        return FALSE;
+      }
+    }
+    if ($user_title) {
+      if (empty($user->field_user_title[LANGUAGE_NONE][0]['value'])) {
+        return FALSE;
+      }
+    }
+    if ($user_education) {
+      if (empty($user->field_user_education[LANGUAGE_NONE][0]['value'])) {
+        return FALSE;
+      }
+    }
+    if ($user_sphere_of_activity) {
+      if (empty($user->field_sphere_of_activity[LANGUAGE_NONE][0]['value'])) {
+        return FALSE;
+      }
+    }
+    if ($user_website) {
+      if (empty($user->field_user_website[LANGUAGE_NONE][0]['value'])) {
+        return FALSE;
+      }
+    }
+    return TRUE;
+  }else{
+    return FALSE;
+  }
+
+}
+
+/**
+ * Check if user is editor of related proposals
+ */
+function bf_task_check_user_is_editor_related_proposals($user){
+  $proposal = bf_task_get_editor_first_related_proposal($user);
+  if(!empty($proposal)){
+    return true;
+  }else{
+    return false;
+  }
+}
+
+/**
+ * Check if user is editor of related proposals
+ */
+function bf_task_get_editor_first_related_proposal($user){
+  if(empty($user->field_committee[LANGUAGE_NONE][0]['target_id'])){
+    return false;
+  }
+  $committee = $user->field_committee[LANGUAGE_NONE][0]['target_id'];
+  $query = db_select('field_data_field_editors', 'fe');
+  $query->innerJoin('field_data_field_committee', 'fc', 'fc.entity_id = fe.entity_id AND fc.entity_type = :type', array(':type' => 'node'));
+  $query->innerJoin('node', 'n', 'n.nid = fe.entity_id');
+  $query->innerJoin('node', 'n1', 'n1.nid = fc.field_committee_target_id');
+  $query->fields('fe', array('field_editors_target_id', 'entity_id'))
+  ->condition('fe.field_editors_target_id', $user->uid)
+  ->condition('fc.field_committee_target_id', $committee)
+  ->condition('n.status', NODE_PUBLISHED)
+  ->condition('n1.status', NODE_PUBLISHED);
+  $result = $query->execute();
+  foreach ($result as $row){
+    return $row;
+  }
+  return false;
+}
+
+/**
+ * Check if user has related votes
+ */
+function bf_task_check_user_has_related_votes($user){
+  $query = db_select('votingapi_vote', 'v');
+  $query->innerJoin('node', 'n', 'n.nid = v.entity_id');
+  $query->fields('v', array('uid'))
+  ->condition('v.uid', $user->uid)
+  ->condition('n.status', NODE_PUBLISHED)
+  ->condition('n.type', 'proposal');
+  $result = $query->execute()->fetchAllAssoc('uid');
+  if (count($result) > 0) {
+    return FALSE;
+  }
+  return TRUE;
+}
+
+/**
+ * Check if user has unanswered questions
+ */
+function bf_task_check_user_has_unanswered_questions($user){
+  $question = bf_task_get_first_unanswered_question($user);
+  if(!empty($question)){
+    return true;
+  }else{
+    return false;
+  }
+}
+
+/**
+ * Check if user has unanswered questions
+ */
+function bf_task_get_first_unanswered_question($user){
+  if(empty($user->field_committee[LANGUAGE_NONE][0]['target_id'])){
+    return false;
+  }
+  
+  $committee = $user->field_committee[LANGUAGE_NONE][0]['target_id'];
+  $query = db_select('comment', 'c1');
+  $query->leftJoin('comment', 'c2', 'c2.pid = c1.cid');
+  $query->innerJoin('field_data_field_committee', 'fc', 'fc.entity_id = c1.nid');
+  $query->innerJoin('node', 'n', 'n.nid = c1.nid');
+  $query->innerJoin('node', 'n1', 'n1.nid = fc.field_committee_target_id');
+  $query->innerJoin('field_data_field_phase', 'fp', 'fp.entity_id = c1.nid');
+  $query->innerJoin('taxonomy_term_data', 'tt', 'tt.tid = fp.field_phase_tid');
+  $query->fields('c1', array('uid', 'nid', 'cid'));
+  $query->fields('tt', array('name'))
+  ->condition('c2.pid', NULL, 'IS NULL')
+  ->condition('c1.pid', 0)
+  ->condition('fc.field_committee_target_id', $committee)
+  ->condition('fc.entity_type', 'node')
+  ->condition('n.status', NODE_PUBLISHED)
+  ->condition('n1.status', NODE_PUBLISHED);
+  $result = $query->execute();
+  if (!empty($result)) {
+    foreach ($result as $row) {
+      if ($row->name != 'Discussion' && $row->name != 'Preparation') {
+        continue;
+      } elseif ($row->name == 'Preparation') {
+        if (!in_array('Admin', $user->roles) && !in_array('Manager', $user->roles)) {
+          continue;
+        }
+      }
+      return $row;
+    }
+  }
+  return FALSE;
+}
+
+

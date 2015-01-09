@@ -1,0 +1,16 @@
+Index: sites/all/modules/contrib/ajax_comments/ajax_comments.module
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/ajax_comments/ajax_comments.module	(revision 20a4aa166827c8aa91ff7be26f1c61b98496deb8)
++++ sites/all/modules/contrib/ajax_comments/ajax_comments.module	(revision )
+@@ -296,7 +296,7 @@
+     $commands[] = ajax_command_invoke('#' . $form['#id'], 'remove');
+   }
+   // If this is being submitted via the views ajax add comment field.
+-  elseif ($form_state['comment']->views_ajax_submission) {
++  elseif (isset($form_state['comment']->views_ajax_submission)) {
+     $message = t('Your comment has been posted.');
+     $commands[] = ajax_command_replace('#' . $form['#id'], $message);
+   }

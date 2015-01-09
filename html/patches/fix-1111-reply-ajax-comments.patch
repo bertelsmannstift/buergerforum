@@ -1,0 +1,50 @@
+Index: sites/all/modules/contrib/ajax_comments/ajax_comments.js
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/ajax_comments/ajax_comments.js	(revision ca36ad11b227e8c7477a346daeff67ec76988b2a)
++++ sites/all/modules/contrib/ajax_comments/ajax_comments.js	(revision )
+@@ -16,7 +16,7 @@
+       //ajaxCommentsScrollForm(commentNumber[1]);
+ 
+       // Don't let people reply over and over.
+-      $(this).hide();
++      $(this).parents('.comment-reply').hide();
+ 
+     });
+ 
+@@ -34,14 +34,15 @@
+       // This needs to be unbound because the ajax_command callback is still
+       // attached to it. We want to show the form that is already hidden
+       // instead of calling for a new one.
+-      $('a#reply-' + commentNumber[3]).addClass('clicked').unbind().attr("href", "#").show().bind({
++      $('a#reply-' + commentNumber[3]).parents('.comment-reply').show();
++      $('a#reply-' + commentNumber[3]).addClass('clicked').unbind().attr("href", "#").bind({
+         click: function(e) {
+           commentNumber = $(this).attr("id").split('-');
+           // Reshow the form.
+           //$('[about="/comment/' + commentNumber[1] + '#comment-' + commentNumber[1] + '"]').next().show();
+           commentCancel.parents('form#comment-form').show();
+           // Don't let people reply over and over.
+-          $(this).hide();
++          $(this).parents('.comment-reply').hide();
+ 
+           //ajaxCommentsScrollForm(commentNumber[1]);
+           e.preventDefault();
+Index: sites/all/modules/contrib/ajax_comments/ajax_comments.module
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/ajax_comments/ajax_comments.module	(revision ca36ad11b227e8c7477a346daeff67ec76988b2a)
++++ sites/all/modules/contrib/ajax_comments/ajax_comments.module	(revision )
+@@ -526,7 +526,7 @@
+   // Add the new form.
+   $commands[] = ajax_command_replace('.pane-add-comment-link .comment-form', '');
+   $commands[] = ajax_command_css('.add-comment-btn', array('display' => 'inline'));
+-  $commands[] = ajax_command_css('#reply-' . $pid, array('display' => 'none'));
++  $commands[] = ajax_command_css('#comment-wrapper-' . $pid.' .comment-reply', array('display' => 'none'));
+   if ($pid) {
+     $commands[] = ajax_command_append('#comment-wrapper-' . $pid . ' .fieldset-comment-wrapper', $form);
+   }

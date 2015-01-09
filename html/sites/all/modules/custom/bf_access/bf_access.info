@@ -1,0 +1,4 @@
+name = BF access
+description = Manage comments add, delete, structure.
+package = BF
+core = 7.x

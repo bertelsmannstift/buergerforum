@@ -1,0 +1,106 @@
+<?php
+
+/**
+ * @file
+ * Install function for the bf_register_form module.
+ */
+
+
+/**
+ * Implements hook_install().
+ */
+function bf_register_form_install() {
+//edited weight module, for cancel submit module user_registrationpassword
+  db_update('system')
+    ->fields(array('weight' => 100))
+    ->condition('name', 'bf_register_form')
+    ->execute();
+}
+
+
+/**
+ * Implementation of hook_schema().
+ */
+
+function bf_register_form_schema() {
+  $schema['bf_register_questions'] = array(
+    'fields' => array(
+     'id' => array(
+             'description' => 'The primary identifier for a rule.',
+             'type' => 'serial',
+             'not null' => TRUE,
+           ),
+      'name' => array(
+        'description' => 'The title of the question.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE
+      ),
+      'filename' => array(
+        'description' => 'The name of the profile.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE
+      ),
+      'append_timestamp' => array(
+        'description' => 'Append a timestamp to the filename.',
+        'type' => 'int',
+        'size' => 'tiny',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0
+      ),
+      'timestamp_format' => array(
+        'description' => 'The format of the timestamp.',
+        'type' => 'varchar',
+        'length' => 14,
+        'not null' => TRUE
+      ),
+      'filters' => array(
+        'description' => 'The filter settings for the profile.',
+        'type' => 'text',
+        'not null' => TRUE,
+        'serialize' => TRUE,
+        'serialized default' => 'a:0:{}',
+      ),
+    ),
+    'primary key' => array('id'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implementation of hook_enable().
+ */
+ /*
+function bf_register_form_enable() {
+  // Check if our field is not already created.
+  if (!field_info_field('field_extparam')) {
+
+    // Create the field base.
+    $field = array(
+      'field_name' => 'field_extparam',
+      'type' => 'text',
+    );
+    field_create_field($field);
+
+    // Create the field instance on the bundle.
+    $instance = array(
+      'field_name' => 'field_extparam',
+      'entity_type' => 'user',
+      'label' => 'Ext param',
+      'bundle' => 'user',
+      // If you don't set the "required" property then the field wont be required by default.
+      'required' => TRUE,
+      'settings' => array(
+        // Here you inform either or not you want this field showing up on the registration form.
+        'user_register_form' => 1,
+      ),
+      'widget' => array(
+        'type' => 'options_select',
+      ),
+    );
+    field_create_instance($instance);
+  }
+}*/

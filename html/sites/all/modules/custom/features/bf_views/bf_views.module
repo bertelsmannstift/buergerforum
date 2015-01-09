@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the BF Views feature.
+ */
+
+include_once 'bf_views.features.inc';

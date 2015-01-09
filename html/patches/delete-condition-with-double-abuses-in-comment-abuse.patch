@@ -1,0 +1,28 @@
+Index: sites/all/modules/contrib/comment_abuse/comment_abuse.module
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/comment_abuse/comment_abuse.module	(revision 7009cd76bbc833110355470e4c747e5559810e7f)
++++ sites/all/modules/contrib/comment_abuse/comment_abuse.module	(revision )
+@@ -208,7 +208,7 @@
+     ->fields('c', array('nid'));
+ 
+   // Check what abuse is not double for anonymous.
+-  if (user_is_anonymous()) {
++  /*if (user_is_anonymous()) {
+     $query->leftJoin(
+       'comment_abuse', 'ca', 'ca.cid = c.cid AND ca.ip = :ip',
+       array(':ip' => $user_ip)
+@@ -220,9 +220,9 @@
+       'comment_abuse', 'ca', 'ca.cid = c.cid AND ca.uid = :uid',
+       array(':uid' => $user->uid)
+     );
+-  }
++  }*/
+   $result = $query->condition('c.cid', $cid)
+-      ->isNull('ca.aid')
++     // ->isNull('ca.aid')
+       ->execute()
+       ->fetch();
+ 

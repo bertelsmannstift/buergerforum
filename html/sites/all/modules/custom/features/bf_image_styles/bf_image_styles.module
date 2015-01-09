@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the BF Image styles feature.
+ */
+
+include_once 'bf_image_styles.features.inc';

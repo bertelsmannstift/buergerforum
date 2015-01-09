@@ -1,0 +1,190 @@
+#edit-contact, #edit-ckeditor {
+  display: none;
+}
+
+#branding .breadcrumb {
+  display: none;
+}
+
+#branding > .tabs  {
+  display: none;
+}
+
+.container-inline-date .date-padding {
+padding:0;
+}
+
+.page-admin-config-messaging-bf-invite .form-item-bf-invite-mail-body {
+max-width:800px;
+}
+
+.page-admin-config-messaging-bf-invite .form-item-bf-invite-mail-body textarea {
+min-height: 300px;
+}
+
+.page-admin-polls-history .view-polls-history .view-filters {
+display:none;
+}
+
+
+/* CK Editor */
+
+.cke_dialog .ImagePreviewBox {
+width:auto !important;
+height:auto !important;
+}
+
+.cke_dialog_ui_hbox .cke_dialog_ui_hbox_first {
+max-width:200px !important;
+width: auto !important;
+}
+
+.cke_dialog_ui_hbox .cke_dialog_ui_hbox_last {
+width:auto !important;
+min-width:400px;
+}
+
+
+/* Newsletter */
+
+.page-node-add-simplenews #help, .node-type-simplenews #help {
+/*display:none;*/
+}
+
+.page-node-add-simplenews .text-summary-wrapper, .node-type-simplenews .text-summary-wrapper {
+display:none;
+}
+div.krumo-element {
+    color: red;
+}
+body div.status a.krumo-name {
+    color: rgb(99, 87, 87);
+}
+body div.status .krumo-preview {
+    color: rgb(99, 87, 87);
+}
+
+body.page-node-edit.node-type-simplenews #branding > .tabs li:nth-child(1), body.page-node-edit.node-type-simplenews #branding > .tabs li:nth-child(2) {
+display:none;
+}
+
+body.page-node-edit.node-type-simplenews #branding > .tabs li:nth-child(3) a:after {
+content: " versenden";
+}
+
+body.page-node-edit.node-type-simplenews #branding > .tabs li:nth-child(3) a{
+background-color:#990000;
+color:#ffffff;
+border:none;
+font-family: "Lucida Grande",Verdana,sans-serif;
+}
+
+#edit-simplenews-roles #edit-roles .form-item-roles-20 {
+border-top:1px solid #ccc;
+border-bottom:1px solid #ccc;
+}
+
+#edit-simplenews-roles #edit-roles .form-item-roles-20:before {
+content:"Newsletterversand NUR an Bürgerredakteure";
+display:inherit;
+
+font-family: "Open Sans","Segoe UI","Helvetica",sans-serif;
+font-size: 20px;
+font-weight: 300;
+margin: 0px 1em 0px 0px;
+padding: 0.25em 0px;
+width: initial;
+
+}
+
+#edit-simplenews-roles #edit-roles .form-item-roles-20:after {
+content:"Durch aktivieren dieser Option wird der Newsletter nur an Bürgerredakteure versendet, die oben gewählten Rollen werden hierbei ingnoriert.";
+display:inherit;
+padding-top:5px;
+padding-bottom:5px;
+}
+
+
+
+/* Poll */
+
+.node-type-advpoll #advpoll-choice-values .form-checkbox, .node-type-advpoll #advpoll-choice-values .form-checkbox + label,
+.page-node-add-advpoll #advpoll-choice-values .form-checkbox, .page-node-add-advpoll #advpoll-choice-values .form-checkbox + label 
+{
+display:none;
+}
+
+.node-type-advpoll #advpoll-choice-values .form-checkbox:checked, .node-type-advpoll #advpoll-choice-values .form-checkbox:checked + label,
+.page-node-add-advpoll #advpoll-choice-values .form-checkbox:checked, .page-node-add-advpoll #advpoll-choice-values .form-checkbox:checked + label  
+{
+display:inline;
+padding-top:5px;
+}
+
+.node-type-advpoll #advpoll-choice-values .form-checkbox:checked + label,
+.page-node-add-advpoll #advpoll-choice-values .form-checkbox:checked + label
+{
+font-size:12px;
+font-style:italic;
+}
+.page-node-edit.node-type-committee .field-widget-text-textarea-with-summary .text-format-wrapper>.form-type-textarea,
+.page-node-add-committee .field-widget-text-textarea-with-summary .text-format-wrapper>.form-type-textarea{
+display: none;
+}
+
+.node-type-advpoll .field-multiple-table .form-type-checkbox,
+.page-node-add-advpoll .field-multiple-table .form-type-checkbox
+{
+display:none;
+}
+
+#bf_admin_menu > .menu {
+display: inline-flex;
+}
+
+#bf_admin_menu .menu > li {
+min-height: 40px;
+}
+
+
+/* Email Setup */
+
+.page-admin-config-system-mimemail .form-item.form-type-checkbox.form-item-mimemail-simple-address,
+.page-admin-config-system-mimemail .form-item.form-type-checkbox.form-item-mimemail-sitestyle,
+.page-admin-config-system-mimemail .form-item.form-type-checkbox.form-item-mimemail-textonly,
+.page-admin-config-system-mimemail .form-item.form-type-checkbox.form-item-mimemail-linkonly,
+.page-admin-config-system-mimemail .form-item.form-type-select.form-item-mimemail-format,
+.page-admin-config-system-mimemail #edit-advanced
+{
+display:none;
+}
+
+.page-admin-structure-contact-edit .form-item.form-type-textfield.form-item-category,
+.page-admin-structure-contact-edit .form-item.form-type-textarea.form-item-reply,
+.page-admin-structure-contact-edit .form-item.form-type-select.form-item-weight,
+.page-admin-structure-contact-edit .form-item.form-type-select.form-item-selected,
+.page-admin-structure-contact-edit #edit-translate
+{
+display:none;
+}
+
+
+
+/* Kontakt Email Patch */
+.page-admin-config-system-site-information .form-item.form-type-textfield.form-item-site-mail label {
+font-size:0;
+}
+
+.page-admin-config-system-site-information .form-item.form-type-textfield.form-item-site-mail label span.form-required {
+font-size: 20px;
+}
+
+.page-admin-config-system-site-information .form-item.form-type-textfield.form-item-site-mail label:before {
+font-size:20px;
+content: 'E-Mail-Adresse für E-Mail-Variable [site:mail]';
+}
+
+
+.page-admin-settings-deutch-roles .disable-ace {
+display:none !important;
+}

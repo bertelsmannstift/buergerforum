@@ -1,0 +1,5 @@
+name = BF Additional Image Fields
+description = Provides a caption and caption url for image fields.
+core = 7.x
+package = BF
+dependencies[] = image

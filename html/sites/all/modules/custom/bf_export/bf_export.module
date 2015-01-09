@@ -1,0 +1,602 @@
+<?php
+
+/**
+ * Implements hook_menu().
+ */
+function bf_export_menu() {
+  $items = array();
+  $items['bf_export'] = array(
+    'title'            => 'File download',
+    'page callback'    => 'bf_export_file',
+    'access arguments' => array('access content'),
+    'type'             => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+
+/**
+ * Export page callback.
+ */
+function bf_export_file() {
+  $data = array();
+  global $language;
+  // Get forum name and slogan.
+  $data['site_name'] = variable_get('site_name');
+  $data['site_slogan'] = variable_get('site_slogan');
+
+  // Get committees.
+  $query = db_select('node', 'n')
+    ->fields('n', array('nid', 'title'))
+    ->condition('n.type', 'committee');
+  $committees = $query->execute()->fetchAllKeyed();
+
+  if (!$committees) {
+    drupal_not_found();
+    return;
+  }
+
+  // Get proposals.
+  $query = db_select('field_data_field_committee', 'fc')
+    ->fields('fc', array('entity_id', 'field_committee_target_id'))
+    ->condition('fc.entity_type', 'node')
+    ->condition('fc.bundle', 'proposal');
+  $proposals = $query->execute()->fetchAllKeyed();
+
+  // Get users in committees.
+  $query = db_select('field_data_field_committee', 'fc');
+  $query->addField('fc', 'entity_id', 'uid');
+  $query->addField('fc', 'field_committee_target_id', 'cid');
+  $query->condition('fc.entity_type', 'user');
+  $query->condition('fc.bundle', 'user');
+  $users = $query->execute()->fetchAllKeyed();
+
+  // Get all users.
+  $query = db_select('users', 'u');
+  $query->innerJoin('field_data_field_first_name', 'fn', 'u.uid=fn.entity_id');
+  $query->innerJoin('field_data_field_last_name', 'ln', 'u.uid=ln.entity_id');
+  $query->addField('u', 'uid', 'uid');
+  $query->addField('fn', 'field_first_name_value', 'f_name');
+  $query->addField('ln', 'field_last_name_value', 'l_name');
+  $query->condition('u.status', 1);
+  $all_users = $query->execute()->fetchAll();
+
+  // Get info-articles.
+  $query = db_select('node', 'n')
+    ->fields('n', array('nid', 'title'))
+    ->condition('n.type', 'info_article');
+  $articles = $query->execute()->fetchAllKeyed();
+
+  bf_export_libraries_load();
+
+  // Add do data.
+  $data['committees'] = array();
+  if ($committees) {
+    foreach ($committees as $cid => $committee) {
+      $data['committees'][$cid]['title'] = $committee;
+    }
+  }
+  if ($users) {
+    foreach ($users as $uid => $user_cid) {
+      $user = user_load($uid);
+      if (isset($user->roles)) {
+        if (in_array('Participant', $user->roles)) {
+          $data['committees'][$user_cid]['participants'][$uid] = array(
+            'first_name' => $user->field_first_name[LANGUAGE_NONE][0]['value'],
+            'last_name'  => $user->field_last_name[LANGUAGE_NONE][0]['value'],
+          );
+        }
+      }
+    }
+  }
+
+  if ($proposals) {
+    foreach ($proposals as $pid => $cid) {
+      $proposal = node_load($pid);
+      $data['committees'][$cid]['proposals'][$pid] = array(
+        'title' => $proposal->title,
+        'image' => $proposal->field_image,
+        'rate'  => rate_get_results('node', $pid, 1)
+      );
+      $data['committees'][$cid]['proposals'][$pid]['body'][] = array(
+        'title' => t('Intro'),
+        'body'  => $proposal->field_intro,
+      );
+      $data['committees'][$cid]['proposals'][$pid]['body'][] = array(
+        'title' => t('Motivation'),
+        'body'  => $proposal->field_motivation,
+      );
+      $data['committees'][$cid]['proposals'][$pid]['body'][] = array(
+        'title' => t('Details'),
+        'body'  => $proposal->field_details,
+      );
+      $data['committees'][$cid]['proposals'][$pid]['body'][] = array(
+        'title' => t('Pro and Contra'),
+        'body'  => $proposal->field_pro_contra,
+      );
+      $data['committees'][$cid]['proposals'][$pid]['body'][] = array(
+        'title' => t('Implementation'),
+        'body'  => $proposal->field_implementation,
+      );
+
+      if (!empty($proposal->field_editors)) {
+        $editors = $proposal->field_editors[LANGUAGE_NONE];
+        foreach ($editors as $editor) {
+          $user = user_load($editor['target_id']);
+          if ($user) {
+            $data['committees'][$cid]['proposals'][$pid]['editors'][] = array(
+              'first_name' => $user->field_first_name[LANGUAGE_NONE][0]['value'],
+              'last_name'  => $user->field_last_name[LANGUAGE_NONE][0]['value'],
+            );
+          }
+        }
+      }
+      else {
+        $data['committees'][$cid]['proposals'][$pid]['editors'] = array();
+      }
+    }
+  }
+
+  if ($articles) {
+    foreach ($articles as $nid => $title) {
+      $article = node_load($nid);
+      $user = user_load($article->uid);
+      $data['articles'][$nid] = array(
+        'title'   => $title,
+        'author'  => $user->field_displayed_name[LANGUAGE_NONE][0]['value'],
+        'created' => date('d.m.Y', $article->created),
+        'image'   => $article->field_image,
+        'body'    => $article->body,
+        'rate'    => rate_get_results('node', $nid, 1),
+      );
+    }
+  }
+
+  $data['users'] = array();
+  if ($all_users) {
+    foreach ($all_users as $all_user) {
+      $user = user_load($all_user->uid);
+      if (!in_array('Admin', $user->roles) && !in_array('Manager', $user->roles) && !in_array('Participant', $user->roles)) {
+        $data['users'][] = $all_user->f_name . ' ' . $all_user->l_name;
+      }
+    }
+  }
+
+  bf_export_create_docx($data);
+}
+
+/**
+ * Load PHPWord libraries.
+ */
+function bf_export_libraries_load() {
+
+  static $static_cache = FALSE;
+
+  if (!$static_cache) {
+
+    if (module_exists('libraries')) {
+      $path = libraries_get_path('htmltodocx');
+      $files = array(
+        1 => '/phpword/PHPWord.php',
+        2 => '/simplehtmldom/simple_html_dom.php',
+        3 => '/htmltodocx_converter/h2d_htmlconverter.php'
+      );
+      foreach ($files as $file) {
+        $file = $path . $file;
+        if (!isset($static_cache[$file])) {
+          $static_cache[$file] = FALSE;
+        }
+        if (file_exists($file) && $static_cache[$file] !== TRUE) {
+          include_once($file);
+        }
+        $static_cache[$file] = TRUE;
+      }
+    }
+
+  }
+
+  return $static_cache;
+}
+
+/**
+ * Create docx file with data.
+ */
+function bf_export_create_docx($data) {
+
+  $PHPWord = new PHPWord();
+
+  $PHPWord->addTitleStyle(1, array('size' => 18, 'bold' => TRUE, 'italic' => FALSE, 'name' => 'Cambria'));
+  $PHPWord->addTitleStyle(2, array('size' => 16, 'bold' => TRUE, 'italic' => TRUE, 'name' => 'Cambria'));
+  $PHPWord->addTitleStyle(3, array('size' => 14, 'bold' => TRUE, 'italic' => FALSE, 'name' => 'Cambria'));
+
+  $section = $PHPWord->createSection();
+
+  $footer = $section->createFooter();
+  $footertext = t('Page ') . '{PAGE}' . t(' of ') . '{NUMPAGES}';
+  $footer->addPreserveText($footertext);
+
+  $data['site_name'] = bf_export_xmlEntities($data['site_name']);
+  $data['site_slogan'] = bf_export_xmlEntities($data['site_slogan']);
+  $section->addText($data['site_name'], array('size' => 26, 'bold' => TRUE, 'italic' => FALSE, 'name' => 'Cambria'));
+  $section->addTextBreak();
+  $section->addText($data['site_slogan'], array('size' => 18, 'bold' => FALSE, 'italic' => TRUE, 'name' => 'Cambria'));
+  $section->addTextBreak(3);
+
+  $styleFont = array('spaceAfter' => 60, 'name' => 'Tahoma', 'size' => 12);
+
+  $section->addTOC($styleFont);
+
+
+  foreach ($data['committees'] as $committee) {
+
+    if (isset($committee['title']) && $committee['title']) {
+      $committee['title'] = str_replace('&', '&amp;', $committee['title']);
+      $section->addPageBreak();
+      $section->addTitle($committee['title'], FALSE, 'h1');
+      $section->addTextBreak();
+    }
+    if (!empty($committee['participants'])) {
+      $section->addText(t('Participants:'), array('italic' => TRUE));
+
+      $flag = TRUE;
+      $partisipants_list = '';
+      foreach ($committee['participants'] as $participant) {
+        $partisipants_list .= (($flag) ? '' : ' | ') . $participant['first_name'] . ' ' . $participant['last_name'];
+        $flag = FALSE;
+      }
+      $partisipants_list = bf_export_xmlEntities($partisipants_list);
+      $section->addText($partisipants_list);
+    }
+    if (!empty($committee['proposals'])) {
+      foreach ($committee['proposals'] as $proposal) {
+        $section->addTitle($proposal['title'], FALSE, 'h2');
+        $section->addText(t('Supporters:') . ' ' . $proposal['rate']['count'], array('italic' => TRUE));
+        $section->addTextBreak();
+        $section->addText(t('Editors:'), array('italic' => TRUE));
+        $flag = TRUE;
+        $editors_list = '';
+        if (isset($proposal['editors']) && $proposal['editors']) {
+          foreach ($proposal['editors'] as $editor) {
+            $editors_list .= (($flag) ? '' : ' | ') . $editor['first_name'] . ' ' . $editor['last_name'];
+            $flag = FALSE;
+          }
+          $editors_list = bf_export_xmlEntities($editors_list);
+          $section->addText($editors_list);
+        }
+
+
+        if (!empty($proposal['image'])) {
+          $image_name = $proposal['image'][LANGUAGE_NONE][0]['filename'];
+          if (file_exists('sites/default/files/styles/proposal_image/public/' . $image_name)) {
+            $section->addTextBreak();
+            $section->addImage('sites/default/files/styles/proposal_image/public/' . $image_name);
+            if (isset($proposal['image'][LANGUAGE_NONE][0]['image_field_caption'])) {
+              $caption = $proposal['image'][LANGUAGE_NONE][0]['image_field_caption']['value'];
+              if (isset($proposal['image'][LANGUAGE_NONE][0]['image_field_caption_url'])) {
+                $caption_url = $proposal['image'][LANGUAGE_NONE][0]['image_field_caption_url']['value'];
+                bf_export_html2doc($section, '<a target="_blank" href="'.$caption_url.'">'.$caption.'</a>');
+              } else {
+                $section->addText($caption);
+              }
+            }
+          }
+        }
+        foreach ($proposal['body'] as $text) {
+          if (!empty($text['body'])) {
+            $section->addTitle($text['title'], FALSE, 'h3');
+
+            bf_export_html2doc($section, $text['body'][LANGUAGE_NONE][0]['value']);
+          }
+        }
+      }
+    }
+  }
+  $section->addPageBreak();
+
+  $section->addTitle(t('Information'), FALSE, 'h1');
+  $section->addTextBreak();
+  if (isset($data['articles']) && $data['articles']) {
+    foreach ($data['articles'] as $article) {
+      $section->addTitle($article['title'], FALSE, 'h2');
+      $section->addText($article['author'], array('italic' => TRUE));
+      $section->addText($article['created'], array('italic' => TRUE));
+      $section->addText(t('Recommends') . ': ' . $article['rate']['count'], array('italic' => TRUE));
+      $section->addTextBreak();
+      if (!empty($article['image'])) {
+        $image_name = $article['image'][LANGUAGE_NONE][0]['filename'];
+        $section->addImage('sites/default/files/styles/info_article_preview/public/info/' . $image_name);
+        if (isset($article['image'][LANGUAGE_NONE][0]['image_field_caption'])) {
+          $caption = $article['image'][LANGUAGE_NONE][0]['image_field_caption']['value'];
+          if (isset($article['image'][LANGUAGE_NONE][0]['image_field_caption_url'])) {
+            $caption_url = $article['image'][LANGUAGE_NONE][0]['image_field_caption_url']['value'];
+            bf_export_html2doc($section, '<a target="_blank" href="'.$caption_url.'">'.$caption.'</a>');
+          } else {
+            $section->addText($caption);
+          }
+        }
+      }
+      if (!empty($article['body']['en'])) {
+        bf_export_html2doc($section, $article['body']['en'][0]['value']);
+      }
+      elseif (!empty($article['body']['de'])) {
+        bf_export_html2doc($section, $article['body']['de'][0]['value']);
+      }
+      elseif (!empty($article['body'][LANGUAGE_NONE])) {
+        bf_export_html2doc($section, $article['body'][LANGUAGE_NONE][0]['value']);
+      }
+    }
+  }
+
+
+  $section->addTitle(t('Users:'), FALSE, 'h1');
+  $flag = TRUE;
+  $all_users_list = '';
+  foreach ($data['users'] as $user) {
+    $all_users_list .= (($flag) ? '' : ' | ') . $user;
+    $flag = FALSE;
+  }
+  $section->addText(bf_export_xmlEntities($all_users_list));
+
+  $objWriter = PHPWord_IOFactory::createWriter($PHPWord, 'Word2007');
+  $file_name = time() . '_documents.docx';
+  $file_path = 'temporary://' . $file_name;
+  $objWriter->save(drupal_realpath($file_path));
+  bf_export_file_direct_download($file_name, $file_path);
+}
+
+/**
+ * Export html text to word.
+ */
+function bf_export_html2doc(&$section, $html) {
+  $html_dom = new simple_html_dom();
+  $html_dom->load('<html><body>' . $html . '</body></html>');
+  $html_dom_array = $html_dom->find('html', 0)->children();
+  $initial_state = array();
+  global $base_root;
+  $initial_state['base_root'] = $base_root;
+  $initial_state['base_path'] = base_path();
+  htmltodocx_insert_html($section, $html_dom_array[0]->nodes, $initial_state);
+}
+
+/**
+ * Set download docx file.
+ */
+function bf_export_file_direct_download($file_name, $file_path) {
+  $headers = array(
+    'Content-Description: File Transfer',
+    'Content-Type: application/octet-stream',
+    'Content-Disposition: attachment; filename=' . $file_name,
+    //'Content-Disposition: attachment; filename="' . basename($file_path) . '"',
+    'Content-Length: ' . filesize($file_path),
+    'Content-Transfer-Encoding: binary',
+    'Pragma: no-cache',
+    'Cache-Control: must-revalidate, post-check=0, pre-check=0',
+    'Expires: 0',
+    'Accept-Ranges: bytes',
+    'Pragma: public',
+  );
+
+  foreach ($headers as $header) {
+    header($header);
+  }
+
+  ob_clean();
+  flush();
+
+  readfile($file_path);
+  unlink($file_path);
+  exit();
+}
+
+function bf_export_xmlEntities($str) {
+  $xml = array(
+    '&#34;',
+    '&#38;',
+    '&#38;',
+    '&#60;',
+    '&#62;',
+    '&#160;',
+    '&#161;',
+    '&#162;',
+    '&#163;',
+    '&#164;',
+    '&#165;',
+    '&#166;',
+    '&#167;',
+    '&#168;',
+    '&#169;',
+    '&#170;',
+    '&#171;',
+    '&#172;',
+    '&#173;',
+    '&#174;',
+    '&#175;',
+    '&#176;',
+    '&#177;',
+    '&#178;',
+    '&#179;',
+    '&#180;',
+    '&#181;',
+    '&#182;',
+    '&#183;',
+    '&#184;',
+    '&#185;',
+    '&#186;',
+    '&#187;',
+    '&#188;',
+    '&#189;',
+    '&#190;',
+    '&#191;',
+    '&#192;',
+    '&#193;',
+    '&#194;',
+    '&#195;',
+    '&#196;',
+    '&#197;',
+    '&#198;',
+    '&#199;',
+    '&#200;',
+    '&#201;',
+    '&#202;',
+    '&#203;',
+    '&#204;',
+    '&#205;',
+    '&#206;',
+    '&#207;',
+    '&#208;',
+    '&#209;',
+    '&#210;',
+    '&#211;',
+    '&#212;',
+    '&#213;',
+    '&#214;',
+    '&#215;',
+    '&#216;',
+    '&#217;',
+    '&#218;',
+    '&#219;',
+    '&#220;',
+    '&#221;',
+    '&#222;',
+    '&#223;',
+    '&#224;',
+    '&#225;',
+    '&#226;',
+    '&#227;',
+    '&#228;',
+    '&#229;',
+    '&#230;',
+    '&#231;',
+    '&#232;',
+    '&#233;',
+    '&#234;',
+    '&#235;',
+    '&#236;',
+    '&#237;',
+    '&#238;',
+    '&#239;',
+    '&#240;',
+    '&#241;',
+    '&#242;',
+    '&#243;',
+    '&#244;',
+    '&#245;',
+    '&#246;',
+    '&#247;',
+    '&#248;',
+    '&#249;',
+    '&#250;',
+    '&#251;',
+    '&#252;',
+    '&#253;',
+    '&#254;',
+    '&#255;'
+  );
+  $html = array(
+    '&quot;',
+    '&amp;',
+    '&amp;',
+    '&lt;',
+    '&gt;',
+    '&nbsp;',
+    '&iexcl;',
+    '&cent;',
+    '&pound;',
+    '&curren;',
+    '&yen;',
+    '&brvbar;',
+    '&sect;',
+    '&uml;',
+    '&copy;',
+    '&ordf;',
+    '&laquo;',
+    '&not;',
+    '&shy;',
+    '&reg;',
+    '&macr;',
+    '&deg;',
+    '&plusmn;',
+    '&sup2;',
+    '&sup3;',
+    '&acute;',
+    '&micro;',
+    '&para;',
+    '&middot;',
+    '&cedil;',
+    '&sup1;',
+    '&ordm;',
+    '&raquo;',
+    '&frac14;',
+    '&frac12;',
+    '&frac34;',
+    '&iquest;',
+    '&Agrave;',
+    '&Aacute;',
+    '&Acirc;',
+    '&Atilde;',
+    '&Auml;',
+    '&Aring;',
+    '&AElig;',
+    '&Ccedil;',
+    '&Egrave;',
+    '&Eacute;',
+    '&Ecirc;',
+    '&Euml;',
+    '&Igrave;',
+    '&Iacute;',
+    '&Icirc;',
+    '&Iuml;',
+    '&ETH;',
+    '&Ntilde;',
+    '&Ograve;',
+    '&Oacute;',
+    '&Ocirc;',
+    '&Otilde;',
+    '&Ouml;',
+    '&times;',
+    '&Oslash;',
+    '&Ugrave;',
+    '&Uacute;',
+    '&Ucirc;',
+    '&Uuml;',
+    '&Yacute;',
+    '&THORN;',
+    '&szlig;',
+    '&agrave;',
+    '&aacute;',
+    '&acirc;',
+    '&atilde;',
+    '&auml;',
+    '&aring;',
+    '&aelig;',
+    '&ccedil;',
+    '&egrave;',
+    '&eacute;',
+    '&ecirc;',
+    '&euml;',
+    '&igrave;',
+    '&iacute;',
+    '&icirc;',
+    '&iuml;',
+    '&eth;',
+    '&ntilde;',
+    '&ograve;',
+    '&oacute;',
+    '&ocirc;',
+    '&otilde;',
+    '&ouml;',
+    '&divide;',
+    '&oslash;',
+    '&ugrave;',
+    '&uacute;',
+    '&ucirc;',
+    '&uuml;',
+    '&yacute;',
+    '&thorn;',
+    '&yuml;'
+  );
+  $str = str_replace($html, $xml, $str);
+  $str = str_ireplace($html, $xml, $str);
+  $str = str_replace('&#160;', ' ', $str);
+  return $str;
+}

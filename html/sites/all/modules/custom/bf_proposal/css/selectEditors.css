@@ -1,0 +1,6 @@
+.references-dialog-links .hide {
+    display: none;
+}
+.references-dialog-links .only-hide {
+    display: none !important;
+}

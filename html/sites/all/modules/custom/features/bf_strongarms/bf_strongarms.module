@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the BF Strongarms feature.
+ */
+
+include_once 'bf_strongarms.features.inc';

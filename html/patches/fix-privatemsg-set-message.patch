@@ -1,0 +1,17 @@
+Index: sites/all/modules/contrib/privatemsg/privatemsg.pages.inc
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/privatemsg/privatemsg.pages.inc	(revision e452a4f18c3e3596eb8eacb15ff802f0c1a4e38c)
++++ sites/all/modules/contrib/privatemsg/privatemsg.pages.inc	(revision )
+@@ -624,7 +624,8 @@
+   try {
+     $message = _privatemsg_send($message);
+     _privatemsg_handle_recipients($message->mid, $message->recipients);
+-    drupal_set_message(t('A message has been sent to !recipients.', array('!recipients' => implode(', ', $recipient_names))));
++    //drupal_set_message(t('A message has been sent to !recipients.', array('!recipients' => implode(', ', $recipient_names))));
++    drupal_set_message(t('A message has been sent'));
+     // Only redirect on new threads.
+     if ($message->mid == $message->thread_id || variable_get('privatemsg_default_redirect_reply', FALSE)) {
+       $redirect = variable_get('privatemsg_default_redirect', '<new-message>');

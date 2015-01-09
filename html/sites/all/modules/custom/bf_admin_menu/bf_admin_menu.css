@@ -1,0 +1,125 @@
+#bf_admin_menu {
+  background: #333;
+  font-family: "Open Sans", "Segoe UI", "Helvetica", sans-serif;
+  font-size: 16px;
+  font-weight: 300;
+  height: 100px;
+  line-height: 16px;
+  padding: 10px 40px 0 0;
+  position: relative;
+}
+.parent-menu-settings #bf_admin_menu,
+.parent-menu-system #bf_admin_menu{
+  height: 135px;
+  min-height: 90px;
+}
+#bf_admin_menu a {
+  font-family: "Open Sans", "Segoe UI", "Helvetica", sans-serif;
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 16px;
+  text-decoration: none;
+}
+
+#bf_admin_menu .menu > li a:hover,
+#bf_admin_menu a:hover {
+  color: #fff;
+}
+
+#bf_admin_menu ul {
+  list-style: none;
+  margin: 0;
+}
+
+#bf_admin_menu li {
+  list-style: none;
+}
+
+#bf_admin_menu > .menu {
+  clear: both;
+  height: 30px;
+  margin-left: 40px;
+  margin-top: 5px;
+}
+
+#bf_admin_menu .menu > li {
+  background: #A6A7A2;
+  float: left;
+  list-style: none outside none;
+  margin: 0px 1px;
+  padding: 10px;
+}
+
+#bf_admin_menu .menu > li a {
+  color: #000;
+
+}
+
+#bf_admin_menu .menu > li.active-trail {
+  background: #fff;
+  border-top: 5px solid #0074BD;
+  margin-top: -5px;
+}
+
+#bf_admin_menu .menu .menu {
+  background: #fff;
+  left: 0;
+  padding-left: 40px;
+  position: absolute;
+  top: 50px;
+  width: 100%;
+}
+
+#bf_admin_menu .menu .menu li {
+  border: none;
+  background: #fff;
+}
+
+#bf_admin_menu .menu > li.active-trail .menu li {
+  border-top: none;
+  margin-top: 0;
+}
+
+#bf_admin_menu .menu > li.active-trail .menu li.active-trail a {
+  text-decoration: underline;
+}
+
+#bf_admin_menu .menu > li.active-trail a:hover,
+#bf_admin_menu .menu .menu li a:hover {
+  color: #000;
+}
+
+
+/* BF Admin - Registration Statistic */
+
+.page-admin-statistics-registration-statistics .sticky-table, page-admin-statistics-registration-statistics .sticky-header {
+width:1024px !important;
+}
+
+.page-admin-statistics-registration-statistics .sticky-header {
+display:none !important;
+}
+
+.page-admin-statistics-registration-statistics .sticky-table th, .page-admin-statistics-registration-statistics .sticky-table td, .page-admin-statistics-registration-statistics .sticky-header th {
+text-align:right;
+border-right:1px solid #ccc;
+}
+
+.page-admin-statistics-registration-statistics .sticky-table th:nth-child(1), .page-admin-statistics-registration-statistics .sticky-table td:nth-child(1), .page-admin-statistics-registration-statistics .sticky-header th:nth-child(1) {
+text-align:left;
+font-weight:bold;
+width: 300px;
+}
+
+.display-none {
+  display: none;
+}
+
+.node-proposal-form .form-item-promote, .node-proposal-form .form-item-sticky,
+.node-task-form .form-item-field-task-type-reassign-task {
+  display: none;
+}
+
+body.page-node-edit.node-type-simplenews #branding > .tabs {
+  display: block;
+}

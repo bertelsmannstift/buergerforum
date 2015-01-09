@@ -1,0 +1,1949 @@
+<?php
+/**
+ * @file
+ *
+ * Create CTools content type for panels .
+ */
+
+define('INJECTOR_PAGES_NOTLISTED', 0);
+define('INJECTOR_PAGES_LISTED', 1);
+define('OTHER_WORDLIMITER_FIELDS',serialize(array(
+  'motivation',
+  'details',
+  'pro_contra',
+  'implementation'
+)));
+
+module_load_include('inc', 'bf_core', 'includes/bf_poll');
+module_load_include('inc', 'bf_core', 'views/handlers/views_handler_field_translate_role');
+module_load_include('inc', 'bf_core', 'views/handlers/views_handler_filter_translate_role');
+module_load_include('inc', 'bf_core', 'views/handlers/views_argument_field_translate_role_rid');
+module_load_include('inc', 'bf_core', 'bf_core.main_menu_overrides');
+
+/**
+ * Implements hook_owlcarousel_settings_alter().
+ */
+function bf_core_owlcarousel_settings_alter(&$settings, $instance) {
+  if (is_array($instance) && !user_is_logged_in()) {
+    if (!$settings['items']) {
+      $instance = variable_get('owlcarousel_settings_default', 'owlcarousel_settings_slides');
+      // Load carousel settings from the instance id.
+      $settings = _owlcarousel_return_carousel_instance_settings($instance);
+    }
+  }
+}
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function bf_core_ctools_plugin_directory($owner, $plugin_type) {
+  if ($owner == 'ctools' && $plugin_type == 'content_types') {
+    return 'plugins/content_types';
+  }
+}
+
+/**
+ * Implements hook_js_alter().
+ */
+function bf_core_js_alter(&$javascript) {
+  // Removes the js that hides the summary field in node add form.
+  unset($javascript['modules/field/modules/text/text.js']);
+}
+
+/**
+ * Implements hook_process_rate_template_thumbs_up().
+ */
+function bf_core_process_rate_template_thumbs_up(&$variables) {
+  // Get count of votes.
+  $query = db_select('votingapi_vote', 'vote')
+    ->condition('vote.entity_id', $variables['content_id']);
+  $query->addExpression('COUNT(*)');
+  $count = $query->execute()->fetchField();
+
+  //Get type of node
+  $query = db_select('node', 'n')
+    ->condition('n.nid', $variables['content_id']);
+  $query->addField('n', 'type');
+  $type = $query->execute()->fetchField();
+
+  if (empty($count)) {
+    $count = '0';
+  }
+
+  $submitted_users = '';
+  if (!user_is_anonymous()) {
+    // Get user vote.
+    $user = user_uid_optional_load();
+    $query = db_select('votingapi_vote', 'vote')
+      ->condition('vote.entity_id', $variables['content_id'])
+      ->condition('vote.uid', $user->uid);
+    $query->addField('vote', 'vote_id');
+    $user_vote = $query->execute()->fetchField();
+
+    if ($count > 0) {
+      // Get users of vote
+      $query = db_select('votingapi_vote', 'vote');
+      $query->join('field_data_field_displayed_name', 'user', 'user.entity_id=vote.uid');
+      $query->condition('vote.entity_id', $variables['content_id']);
+      $query->addField('vote', 'uid');
+      $query->addField('user', 'field_displayed_name_value', 'name');
+      $query->orderBy('timestamp', 'DESC');
+      $query->range(0, 3);
+      $users_vote = $query->execute()->fetchAllKeyed();
+      $submitted_users = t('@count x signed by:', array('@count' => $count));
+      foreach ($users_vote as $uid => $name) {
+        $submitted_users .= ' ' . l($name, 'user/' . $uid) . ',';
+      }
+      $submitted_users = substr($submitted_users, 0, -1);
+      if ($count > 3) {
+        $submitted_users .= ' ' . t('and @count others', array('@count' => $count - 3));
+      }
+    }
+
+    $up_text = '';
+    if ($type == 'info_article') {
+      if (empty($user_vote)) {
+        $up_text = t('Recommend this article');
+      }
+      else {
+        $up_text = t('Unrecommend this article');
+      }
+    }
+    elseif ($type == 'proposal') {
+      if (empty($user_vote)) {
+        $up_text = t('Submitting proposal');
+      }
+      else {
+        $up_text = t('Unsubmitting proposal');
+      }
+    }
+
+    if (empty($variables['links'][0]['href'])) {
+      $variables['up_button'] = '';
+    }
+    else {
+      $variables['up_button'] = theme('rate_button', array(
+        'text'  => $up_text,
+        'href'  => $variables['links'][0]['href'],
+        'class' => 'rate-recommend-btn btn'
+      ));
+    }
+
+  }
+  else {
+    $variables['up_button'] = '';
+    if ($count > 0) {
+      $submitted_users = t('@count x signed', array('@count' => $count));
+    }
+  }
+  $variables['info'] = $count;
+  if ($type == 'proposal') {
+    $variables['info'] = '';
+    $variables['display_options']['description'] = $submitted_users;
+  }
+  elseif ($type == 'info_article') {
+    $variables['info'] .= ' ';
+  }
+}
+
+/**
+ * Implements hook_block_info().
+ */
+
+function bf_core_block_info() {
+  $blocks['user_badge'] = array(
+    'info'  => t('User Badge'),
+    'cache' => DRUPAL_CACHE_PER_USER,
+  );
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function bf_core_block_view($delta = '') {
+  $block = array();
+
+  switch ($delta) {
+    case 'user_badge':
+      $block['subject'] = '';
+      $block['content'] = theme('user_badge');
+      break;
+    case 'counter':
+      $block['subject'] = '';
+      $block['content'] = '';
+      break;
+  }
+
+  return $block;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function bf_core_theme() {
+  return array(
+    'user_badge'                                               => array(
+      'template' => 'user_badge',
+    ),
+    'search_form'                                              => array(
+      'template'       => 'search_form',
+      'render element' => 'form',
+    ),
+    'views_view_field__info_articles__page_3__field_task_type' => array(
+      'variables' => array('view' => NULL, 'options' => NULL, 'row' => NULL),
+      'template'  => 'views-view-field--info-articles--page-3--field-task-type',
+      'base hook' => 'views_view_fields',
+      'path'      => drupal_get_path('module', 'bf_core') . '/view/templates/content-view',
+    ),
+    'views_view_field__info_articles__page_4__field_task_type' => array(
+      'variables' => array('view' => NULL, 'options' => NULL, 'row' => NULL),
+      'template'  => 'views-view-field--info-articles--page-4--field-task-type',
+      'base hook' => 'views_view_fields',
+      'path'      => drupal_get_path('module', 'bf_core') . '/view/templates/content-view',
+    ),
+  );
+}
+
+function bf_core_preprocess_search_form(&$variables) {
+  $variables['search'] = array();
+  $hidden = array();
+  // Provide variables named after form keys so themers can print each element independently.
+  foreach (element_children($variables['form']) as $key) {
+    $type = isset($variables['form'][$key]['#type']) ? $variables['form'][$key]['#type'] : '';
+    if ($type == 'hidden' || $type == 'token') {
+      $hidden[] = drupal_render($variables['form'][$key]);
+    }
+    else {
+      $variables['search'][$key] = drupal_render($variables['form'][$key]);
+    }
+  }
+  // Hidden form elements have no value to themers. No need for separation.
+  $variables['search']['hidden'] = implode($hidden);
+  // Collect all form elements to make it easier to print the whole form.
+  $variables['search_form'] = implode($variables['search']);
+}
+
+/**
+ * Preprocess function for the user_badge block.
+ */
+
+function bf_core_preprocess_user_badge(&$vars) {
+  global $user;
+  ctools_add_js('dropbutton', 'ctools', 'js');
+  if ($user->uid) {
+    $user = user_load($user->uid);
+    $vars = array_merge($vars, bf_core_build_user_details($user));
+  }
+  else {
+    $vars['login'] = url('user/login');
+  }
+
+  $vars['btn_class'] = variable_get('toolbar_style_btn_class', 0) ? '' : 'btn-inverse';
+}
+
+/**
+ * Return a edited user's profile
+ * @param  object $user
+ * @param  string $image_style
+ *
+ * @return array
+ */
+
+function bf_core_build_user_details($user, $image_style = 'userpic30') {
+  $details = array();
+  $details['user'] = $user;
+  $details['realname'] = bf_core_display_name($user);
+  $details['name'] = $user->name;
+  $details['picture'] = bf_core_users_picture($user, $image_style);
+  //Build out links.
+  $details['links']['dashboard'] = 'user/' . $user->uid . '/view';
+  $details['links']['edit_profile'] = 'user/' . $user->uid . '/edit';
+  $details['links']['logout'] = 'user/logout';
+  return $details;
+}
+
+
+/**
+ * Return a user's profile image
+ * @param  object $user
+ * @param  string $image_style
+ * @param  boolean $url
+ *
+ * @return string
+ */
+
+function bf_core_users_picture($user = NULL, $image_style = 'userpic', $url = FALSE,
+                               $size_default = array('width' => 30, 'height' => 30)) {
+
+  if (isset($user) && !empty($user->picture)) {
+    $picture = $user->picture;
+    $image = array(
+      'style_name' => $image_style,
+      'path'       => $picture->uri,
+      'alt'        => t('Your profile picture'),
+    );
+    if ($url) {
+      return image_style_url($image_style, $picture->uri);
+    }
+    else {
+      return theme('image_style', $image);
+    }
+  }
+  else {
+    $image = array(
+      'style_name' => $image_style,
+      'path'       => image_style_url($image_style, 'public://default_profile.gif'),
+      'width'      => $size_default['width'],
+      'height'     => $size_default['height'],
+      'alt'        => t('Your profile picture'),
+    );
+    // Image styles only supported for images in /files dir
+    // so for now, ignore the image style.
+    if ($url) {
+      return drupal_get_path('module', 'bf_core') . '/images/pic-user.gif';
+    }
+    else {
+      return theme('image', $image);
+    }
+  }
+}
+
+/**
+ * Return a user's display name or FirstLast name
+ * @param  object $user
+ *
+ * @return string
+ */
+
+function bf_core_display_name($user) {
+  if (isset($user->field_displayed_name) && isset($user->field_displayed_name[LANGUAGE_NONE][0]['value'])) {
+    return $user->field_displayed_name[LANGUAGE_NONE][0]['value'];
+  }
+  else {
+    return $user->field_first_name[LANGUAGE_NONE][0]['value'] . ' ' .
+      $user->field_last_name[LANGUAGE_NONE][0]['value'];
+  }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function bf_core_form_user_register_form_alter(&$form, $form_state, $form_id) {
+  $form['#validate'][] = 'bf_core_form_user_profile_form_submit';
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function bf_core_form_user_profile_form_alter(&$form, $form_state, $form_id) {
+  $form['#validate'][] = 'bf_core_form_user_profile_form_validate';
+  $form['#submit'][] = 'bf_core_form_user_profile_form_submit';
+}
+
+/**
+ * Validate User profile form.
+ */
+function bf_core_form_user_profile_form_validate($form, &$form_state) {
+  $values = $form_state['values'];
+  if (empty($values['field_displayed_name'][LANGUAGE_NONE][0]['value'])) {
+    $display_name = $values['field_first_name'][LANGUAGE_NONE][0]['value'] . ' ' .
+      $values['field_last_name'][LANGUAGE_NONE][0]['value'];
+    $form_state['values']['field_displayed_name'][LANGUAGE_NONE][0]['value'] = $display_name;
+  }
+
+}
+
+/**
+ * Submit User profile form.
+ */
+function bf_core_form_user_profile_form_submit($form, &$form_state) {
+
+  // Added redirect in front pages.
+  if (!bf_access_admin_menu_access_check() && $form['#user']->uid) {
+    drupal_goto(url('user/' . $form['#user']->uid,array('absolute' => TRUE)));
+  }
+}
+
+/**
+ * Function submit user login
+ * Redirect to front page
+ */
+function bf_core_login_redirect($form, &$form_state) {
+  drupal_goto('');
+}
+
+/**
+ * Implements hook_path_update().
+ */
+function bf_core_path_update($path) {
+
+  if ($path['language'] != 'en') {
+    $path['language'] = LANGUAGE_NONE;
+    $updated = db_update('url_alias')
+      ->fields(array(
+        'language' => LANGUAGE_NONE,
+      ))
+      ->condition('pid', $path['pid'], '=')
+      ->execute();
+  }
+}
+
+
+/**
+ * Implements hook_form_alter().
+ */
+function bf_core_form_views_exposed_form_alter(&$form, $form_state, $form_id) {
+
+  if ($form['#id'] == 'views-exposed-form-users-page' || $form['#id'] == 'views-exposed-form-bf-members-block') {
+    $form['rid']['#options'][0] = 'Editor';
+  }
+
+  if (isset($form['field_task_type_value_1'])) {
+    foreach ($form['field_task_type_value_1']['#options'] as $task_type_key => $task_type) {
+      $form['field_task_type_value_1']['#options'][$task_type_key] = t($form['field_task_type_value_1']['#options'][$task_type_key]);
+    }
+  }
+
+  if (isset($form['committee']) || isset($form['field_committee_target_id'])) {
+    // Committees
+    $query = db_select('node', 'n')
+      ->condition('n.type', 'committee')
+      ->condition('n.status', 1);
+    $query->addField('n', 'nid');
+    $query->addField('n', 'title');
+    $committees = $query->execute()->fetchAllKeyed();
+    $committees[''] = t('- Any -');
+    asort($committees);
+  }
+  if (isset($form['committee'])) {
+    $form['committee'] = array(
+      '#options'       => $committees,
+      '#type'          => 'select',
+      '#default_value' => ''
+    );
+  }
+  //for change commitee in popup select editor
+  if (isset($form['field_committee_target_id'])) {
+    $form['field_committee_target_id'] = array(
+      '#options'       => $committees,
+      '#type'          => 'select',
+      '#default_value' => ''
+    );
+  }
+
+  if (!empty($form['rid'])) {
+    $roles = $form['rid']['#options'];
+    if ($form['#id'] == 'views-exposed-form-bf-members-block') {
+      foreach ($roles as $id => &$role) {
+        if ($form['rid']['#options'][$id] == 'Admin' || $form['rid']['#options'][$id] == 'Manager') {
+          unset($form['rid']['#options'][$id]);
+        }
+        else {
+          $form['rid']['#options'][$id] = bf_core_get_gender_role($form['rid']['#options'][$id], 'neutral', TRUE);
+        }
+      }
+    }
+    else {
+      foreach ($roles as $id => $role) {
+        $form['rid']['#options'][$id] = t($form['rid']['#options'][$id]);
+      }
+    }
+
+    $form['#info']['filter-rid']['label'] = t($form['#info']['filter-rid']['label']);
+  }
+  $form['reset']['#attributes'] = array(
+    'onclick' => 'var selects = document.getElementsByClassName("form-select")
+for (var i=0; i<selects.length; i++)selects[i].value = "all";this.submit()'
+  );
+  if ($form_state['view']->name == 'bf_members') {
+    $form['#action'] = 'teilnehmeruebersicht';
+  }
+
+  if (!empty($form['sort_by'])) {
+    $form['sort_by']['#title'] = t($form['sort_by']['#title']);
+  }
+
+  if (!empty($form['submit'])) {
+    $form['submit']['#value'] = t($form['submit']['#value']);
+  }
+
+  if (!empty($form['reset']['#value'])) {
+    $form['reset']['#value'] = t($form['reset']['#value']);
+  }
+
+  if (!empty($form['committee'])) {
+    $form['#info']['filter-field_committee_target_id']['label'] = t($form['#info']['filter-field_committee_target_id']['label']);
+  }
+
+}
+
+/**
+ * Implements hook_init().
+ *
+ * Redirect translate node
+ */
+function bf_core_init() {
+  global $language;
+  $current_path = current_path();
+  if (module_exists('translation') && preg_match('/node\/([0-9]+)(\/.+|)$/', $current_path, $matches)) {
+    switch (variable_get('locale_language_negotiation_url_part', LOCALE_LANGUAGE_NEGOTIATION_URL_PREFIX)) {
+      case LOCALE_LANGUAGE_NEGOTIATION_URL_PREFIX:
+        // Check if there's a translation for the current language of the requested node...
+        // $matches[0] is the entire matches path from above
+        $node_translations = translation_path_get_translations($matches[0]);
+
+        // If there is, go to the translation.
+        if (!empty($node_translations[$language->language]) && $node_translations[$language->language] != $matches[0]) {
+          globalredirect_goto($node_translations[$language->language]);
+        }
+    }
+  }
+
+  $lang_path = explode('?', url('sites/all/libraries/socialshareprivacy/socialshareprivacy/lang/', array('query' => array())));
+  $dummy_img = 'sites/all/libraries/socialshareprivacy/socialshareprivacy/socialshareprivacy/images/dummy_facebook_' . $language->language . '.png';
+  drupal_add_js(array(
+    'secureshare' => array(
+      'secureshare' => array(
+        'language'  => $language->language,
+        'lang_path' => $lang_path[0],
+        'services'  => array(
+          'facebook' => array(
+            'dummy_img' => $dummy_img,
+          )
+        )
+      )
+    )
+  ), 'setting');
+
+  // Set default language in site.
+  $languages = language_list();
+  if (!isset($_GET['language'])) {
+    if (isset($_SESSION['lang'])) {
+      $language = $languages[$_SESSION['lang']];
+    }
+    else {
+      $language = $languages['de'];
+    }
+  }
+  else {
+    if (in_array($_GET['language'], array('en', 'de'))) {
+      $language = $languages[$_GET['language']];
+      $_SESSION['lang'] = $_GET['language'];
+    }
+  }
+}
+
+/**
+ * Prerender handler.
+ */
+function bf_core_secureshare_pre_render($element) {
+  global $language;
+  if ($language->language == 'de') {
+    $element['#secureshare_profile'] = 'Info article de';
+  }
+  return $element;
+}
+
+/**
+ * After build site information form
+ */
+function bf_core_after_build($form, &$form_state) {
+  global $language;
+  $form['path']['#access'] = FALSE;
+  $form['site_information']['variable_realm_selector_language'] = $form['variable_realm_selector_language'];
+  $form['site_information']['variable_realm_selector_language']['#weight'] = 5;
+  $form['variable_realm_selector_language']['#access'] = FALSE;
+  $form['bf_phase_fieldset']['bf_phase_date']['date']['#title'] = t('End Date of Phase');
+  $translate = i18n_taxonomy_term_get_translation(taxonomy_term_load($form['bf_phase_fieldset']['bf_phase_name']['#default_value']), $language->language);
+
+  if ($translate) {
+    $form['bf_phase_fieldset']['bf_phase_name']['#value'] = $translate->tid;
+    $form['bf_phase_fieldset']['bf_phase_name']['#default_value'] = $translate->tid;
+  }
+  return ($form);
+}
+
+/**
+ * After build field edit form
+ */
+function bf_core_field_edit_after_build($form, &$form_state) {
+  hide($form['field']['translatable']);
+  hide($form['instance']['settings']['user_register_form']);
+  hide($form['instance']['settings']['token_tree']);
+  hide($form['instance']['exclude_cv']);
+  return ($form);
+}
+
+
+function bf_core_username_alter(&$name, $account) {
+  // Display the user's uid instead of name.
+  if (isset($account->field_displayed_name) && isset($account->field_displayed_name['und'][0]['safe_value'])) {
+    $name = $account->field_displayed_name['und'][0]['safe_value'];
+  }
+}
+
+/**
+ * After build node newsletter form
+ */
+function bf_core_newsletter_after_build($form, &$form_state) {
+  $form['actions']['preview_changes']['#access'] = FALSE;
+  return ($form);
+}
+
+/**
+ * Implements hook_form_alter().
+ *
+ */
+function bf_core_form_alter(&$form, &$form_state, $form_id) {
+
+  if ($form_id == 'simplenews_node_form') {
+    $form['#after_build'][] = 'bf_core_newsletter_after_build';
+    $form['additional_settings']['#access'] = FALSE;
+  }
+
+  if ($form_id == 'committee_node_form') {
+    global $language;
+    $lang = 'und';
+    if (isset($form['body'][$language->language]) && isset($form['body'][$language->language][0]['#entity_type'])) {
+      $lang = $language->language;
+    }
+    elseif (isset($form['body']['en'][0]['#entity_type'])) {
+      $lang = 'en';
+    }
+    elseif (isset($form['body']['de'][0]['#entity_type'])) {
+      $lang = 'de';
+    }
+    $form['body'][$lang]['#cardinality'] = 0;
+    // $form['body'][$lang][0]['#type']='plain_text';
+  }
+  if ($form_id == 'simplenews_admin_category_form') {
+    $form['email']['receipt']['#access'] = FALSE;
+  }
+  if ($form_id == 'system_site_information_settings') {
+    global $user;
+
+    $form['#after_build'][] = 'bf_core_after_build';
+    $access = $user->uid == 1 ? TRUE : FALSE;
+    $form['front_page']['#access'] = $access;
+    $form['error_page']['#access'] = $access;
+    $form['site_information']['site_mail']['#weight'] = -1;
+    $form['site_mail'] = $form['site_information']['site_mail'];
+    $form['site_information']['site_mail']['#access'] = FALSE;
+    //added logo upload field
+    $form['logo'] = array(
+      '#type'        => 'fieldset',
+      '#title'       => t('Project Logo'),
+      '#description' => t('If toggled on, the following logo will be displayed.'),
+      '#attributes'  => array('class' => array('theme-settings-bottom')),
+      '#weight'      => 0
+    );
+    $form['logo']['default_logo'] = array(
+      '#type'          => 'checkbox',
+      '#title'         => t('Use the default logo'),
+      '#default_value' => theme_get_setting('default_logo', 'bf_theme'),
+      '#tree'          => FALSE,
+      '#description'   => t('Check here if you want the theme to use the logo supplied with it.')
+    );
+    $form['logo']['settings'] = array(
+      '#type'   => 'container',
+      '#states' => array(
+        // Hide the logo settings when using the default logo.
+        'invisible' => array(
+          'input[name="default_logo"]' => array('checked' => TRUE),
+        ),
+      ),
+    );
+    $form['logo']['settings']['logo_path'] = array(
+      '#type'          => 'textfield',
+      '#title'         => t('Path to custom logo'),
+      '#description'   => t('The path to the file you would like to use as your logo file instead of the default logo.'),
+      '#default_value' => theme_get_setting('logo_path', 'bf_theme'),
+    );
+    $form['logo']['settings']['logo_upload'] = array(
+      '#type'        => 'file',
+      '#title'       => t('Upload logo image'),
+      '#maxlength'   => 40,
+      '#description' => t("If you don't have direct file access to the server, use this field to upload your logo.")
+    );
+    //added second logo upload field
+    $form['logo']['second_logo_path'] = array(
+      '#type'          => 'textfield',
+      '#title'         => t('Path to second logo'),
+      '#description'   => t('The path to the file you would like to use as your logo file instead of the default logo.'),
+      '#default_value' => theme_get_setting('second_logo_path', 'bf_theme'),
+    );
+    $form['logo']['second_logo_upload'] = array(
+      '#type'        => 'file',
+      '#title'       => t('Upload second logo image'),
+      '#maxlength'   => 40,
+      '#description' => t("If you don't have direct file access to the server, use this field to upload your logo.")
+    );
+    $form['limit_proposal_chars'] = array(
+      '#type'        => 'fieldset',
+      '#title'       => t('Proposal'),
+      '#attributes'  => array('class' => array('theme-settings-bottom')),
+      '#weight'      => 10
+    );
+    $form['limit_proposal_chars']['intro'] = array(
+      '#type'          => 'textfield',
+      '#title'         => t('Length restriction for intro (maximum number of characters)'),
+      '#default_value' => variable_get('bf_limit_proposal_chars_intro',150),
+    );
+    $form['limit_proposal_chars']['other'] = array(
+      '#type'          => 'textfield',
+      '#title'         => t('Length restriction for each proposal section (maximum number of characters)'),
+      '#default_value' => variable_get('bf_limit_proposal_chars_other',150),
+    );
+    $form['#validate'][] = 'bf_core_logo_settings_validate';
+    $form['#submit'][] = 'bf_core_system_site_information_save_email';
+  }
+
+  if ($form_id == 'nodequeue_arrange_subqueue_form_3'){
+    drupal_set_title(t('Sort tasks'));
+    hide($form['actions']['reverse']);
+    hide($form['actions']['shuffle']);
+    hide($form['actions']['clear']);
+    foreach (element_children($form['nodes']) as $element) {
+      hide($form['nodes'][$element]['edit']);
+      hide($form['nodes'][$element]['remove']);
+    }
+
+  }
+  if ($form_id == 'proposal_node_form' || $form_id == 'bf_pief_field_edit_form') {
+
+    $count_intro = strlen($form['field_intro']['und'][0]['value']['#default_value']);
+    $limit_intro_text = variable_get('bf_limit_proposal_chars_intro',150);
+    $limit_other_text = variable_get('bf_limit_proposal_chars_other',150);
+
+    $form['field_intro'][LANGUAGE_NONE][0]['value']['#description'] = "<span id=\"count_intro\">{$count_intro}</span>";
+   //   t('!x characters left (Length restricted to @max character)', array('!x'=>"<span id=\"count_intro\">{$count_intro}</span>", '@max'=> $limit_intro_text));
+    $form['field_intro'][LANGUAGE_NONE][0]['value']['#attributes'] = array('worlimiter' => $limit_intro_text);
+    drupal_add_js(array(
+      'wordlimiter'=>array(
+        'intro' => $limit_intro_text,
+        'other' => $limit_other_text,
+        'default_intro' => $count_intro
+      )),'setting');
+    ctools_add_js('proposal_wordlimiter', 'bf_core');
+    $form['#validate'][] = 'bf_core_validate_proposal_wordlimiter';
+
+    $other_wordlimiter_fields = unserialize(OTHER_WORDLIMITER_FIELDS);
+    foreach ($other_wordlimiter_fields as $wordlimiter_field) {
+      $form['field_' . $wordlimiter_field][LANGUAGE_NONE][0]['#description'] = "<span class=\"count-worlimiter\" id=\"count_" .
+        $wordlimiter_field ."\">{$limit_other_text}</span>";
+      $form['field_' . $wordlimiter_field][LANGUAGE_NONE][0]['#attributes'] = array('worlimiter' => $limit_other_text);
+    }
+  }
+
+  if ($form_id == 'user_profile_form') {
+    hide($form['account']['name']);
+    if (isset($form['account']['roles']['#options'])) {
+      foreach ($form['account']['roles']['#options'] as &$role) {
+        $role = t($role);
+      }
+    }
+    //edit breadcrumbs
+    $breadcrumb = menu_get_active_breadcrumb();
+    $breadcrumb[1] = t('Edit profile');
+    drupal_set_breadcrumb($breadcrumb);
+    drupal_set_title(t('Edit profile'));
+    $form['actions']['cancel']['#prefix'] = '<div class="form-cancel-account-text">' . t('Your account will be removed and all account information deleted. All of your content will be assigned to the Anonymous user. This action cannot be undone.') . '</div>';
+  }
+
+  if ($form_id == 'task_node_form') {
+    unset($form['body']['und'][0]['summary']);
+    $form['field_link']['#type'] = 'fieldset';
+    $form['field_link']['#title'] = t('Link');
+    $form['field_date_begin']['und'][0]['#title'] = t('Start Date');
+    $form['field_date']['und'][0]['#title'] = t('Due to');
+    $form['field_date']['und'][0]['#theme_wrappers'] = array();
+    $form['field_date_begin']['und'][0]['#theme_wrappers'] = array();
+  }
+
+
+  if ($form_id == 'info_article_node_form') {
+    $form['field_date_of_publication']['und'][0]['#theme_wrappers'] = array();
+    $form['field_date_of_publication']['und'][0]['#title'] = t('Date of publication');
+    if (empty($form['field_date_of_publication'][LANGUAGE_NONE][0]['#default_value'])) {
+      $form['field_date_of_publication']['#default_value'] = date('Y-m-d H:i:s');
+    }
+    array_unshift($form['#validate'], 'bf_core_info_article_form_validate');
+  }
+
+  if ($form_id == 'advpoll_node_form') {
+    $form['advpoll_cookie_duration']['#access'] = FALSE;
+    $form['body']['#access'] = FALSE;
+    $form['advpoll_behavior']['#access'] = FALSE;
+    $form['advpoll_mode']['#access'] = FALSE;
+    $form['advpoll_dates']['#access'] = FALSE;
+    $form['advpoll_closed']['#access'] = FALSE;
+    unset($form['advpoll_options']['und']['#options']['electoral']);
+    unset($form['advpoll_options']['und']['#options']['block']);
+    $form['revision_information']['#access'] = FALSE;
+    $form['options']['#access'] = FALSE;
+    $form['author']['#access'] = FALSE;
+    $form['#validate'][] = 'bf_core_advpoll_node_form_validate';
+    unset($form['advpoll_options']['und']['#default_value'][0]);
+    hide($form['advpoll_options']);
+    $form['advpoll_options']['und']['#checked'] = FALSE;
+    //disabled checkbox write-in choice
+    foreach ($form['advpoll_choice']['und'] as $key => $choice) {
+      if (is_numeric($key)) {
+        $form['advpoll_choice']['und'][$key]['write_in']['#disabled'] = TRUE;
+        hide($form['advpoll_choice']['und'][$key]['write_in']);
+      }
+    }
+  }
+  //advanced poll form
+  if ($form_id == 'advpoll_choice_form') {
+    drupal_add_js(array(
+        'advpoll_deletenid' => array(
+          'nid'    => isset($form_state['build_info']['args'][0]->nid) ? $form_state['build_info']['args'][0]->nid : '',
+          'reload' => TRUE
+        )
+      ),
+      'setting');
+    $form['submit']['#ajax']['callback'] = 'poll_view_voting_ajax_submit';
+    $form['submit']['#ajax']['#executes_submit_callback'] = TRUE;
+  }
+  //poll form
+  if ($form_id == 'poll_view_voting') {
+    $form['vote']['#submit'][] = 'poll_view_voting_poll_submit';
+  }
+
+  if ($form_id == 'privatemsg_new') {
+    $form['subject']['#required'] = TRUE;
+    $form['actions']['cancel']['#markup'] = '<a href="javascript:void(0)" onclick="document.getElementById(\'edit-subject\').value=\'\';document.getElementById(\'edit-body-value\').value=\'\';"
+    id="edit-cancel">' . t('Cancel') . '</a>';
+  }
+  if ($form_id == 'user_register_form') {
+    if (isset($form['account']['roles'])) {
+      $user_roles = $form['account']['roles']['#options'];
+      foreach ($user_roles as $key => $user_role) {
+        $user_roles[$key] = t($user_role);
+      }
+      $form['account']['roles']['#options'] = $user_roles;
+    }
+    $form['#theme'] = array('bf_user_register_form');
+    $form['field_sex']['#default_value'] = 'Male';
+    if (isset($form_state['input'])) {
+      $form_state['values'] = $form_state['input'];
+    }
+    $form['#attached']['js'][] = drupal_get_path('theme', 'bf_theme') . '/assets/js/register.js';
+  }
+
+  if ($form_id == 'field_ui_field_delete_form') {
+
+    if ($form['bundle']['#value'] == 'user') {
+      $form['#submit'][] = 'bf_core_field_delete_form_submit';
+      $form['actions']['cancel']['#href'] = 'admin/config/system/register-form-settings';
+    }
+  }
+  if ($form_id == 'field_ui_field_edit_form') {
+    $form['#submit'][] = 'bf_core_field_delete_form_submit';
+    $form['actions']['cancel']['#href'] = 'admin/config/system/register-form-settings';
+    hide($form['instance']['description']);
+    $form['field']['settings']['allowed_values']['#description'] = t('Provide text to describe');
+    $form['#after_build'][] = 'bf_core_field_edit_after_build';
+  }
+
+  if ($form_id == 'user_login') {
+    $validators = array(
+      'user_login_name_validate',
+      'user_login_authenticate_validate',
+      'bf_core_user_login_final_validate'
+    );
+    $form['#validate'] = $validators;
+    $form['#validate'][] = 'bf_core_login_validate';
+    if ($form['#action'] != '/user') {
+      $form['#submit'][] = 'bf_core_login_submit';
+    }
+  }
+  if ($form_id == 'search_form') {
+    $options = array(
+      'all'          => t('Full Website'),
+      'proposal'     => t('All Proposals'),
+      'info_article' => t('Info Articles'),
+      'page'         => t('Content Pages')
+    );
+    $form['searchOptions'] = array(
+      '#prefix'        => '<button type="submit" class="btn submit btn-inverse">
+          <i class="icon-search"></i>
+        </button><div class="btn-group"><button class="btn dropdown-toggle btn-inverse" data-toggle="dropdown">
+          <i class="caret"></i>
+        </button><div class="dropdown-menu options">',
+      '#type'          => 'radios',
+      '#default_value' => isset($_SESSION['searchOptions']) ? $_SESSION['searchOptions'] : 'all',
+      '#options'       => $options,
+      '#suffix'        => '</div></div>'
+    );
+
+    $form['#submit'][] = 'bf_core_search_type_save';
+    ctools_add_js('toolbar_search', 'bf_core', 'js');
+    hide($form['actions']);
+  }
+  return $form;
+}
+
+/**
+ * The final validation handler on the login form.
+ *
+ * Sets a form error if user has not been authenticated, or if too many
+ * logins have been attempted. This validation function should always
+ * be the last one.
+ */
+function bf_core_user_login_final_validate($form, &$form_state) {
+  if (empty($form_state['uid'])) {
+    // Always register an IP-based failed login event.
+    flood_register_event('failed_login_attempt_ip', variable_get('user_failed_login_ip_window', 3600));
+    // Register a per-user failed login event.
+    if (isset($form_state['flood_control_user_identifier'])) {
+      flood_register_event('failed_login_attempt_user', variable_get('user_failed_login_user_window', 21600), $form_state['flood_control_user_identifier']);
+    }
+
+    if (isset($form_state['flood_control_triggered'])) {
+      if ($form_state['flood_control_triggered'] == 'user') {
+        form_set_error('name', format_plural(variable_get('user_failed_login_user_limit', 5), 'Sorry, there has been more than one failed login attempt for this account. It is temporarily blocked. Try again later or <a href="@url">request a new password</a>.', 'Sorry, there have been more than @count failed login attempts for this account. It is temporarily blocked. Try again later or <a href="@url">request a new password</a>.', array('@url' => url('user/password'))));
+      }
+      else {
+        // We did not find a uid, so the limit is IP-based.
+        form_set_error('name', t('Sorry, too many failed login attempts from your IP address. This IP address is temporarily blocked. Try again later or <a href="@url">request a new password</a>.', array('@url' => url('user/password'))));
+      }
+    }
+    else {
+      form_set_error('name', t('Sorry, unrecognized username or password. <a href="@password">Have you forgotten your password?</a>', array('@password' => url('user/password', array('query' => array('name' => $form_state['values']['name']))))));
+      watchdog('user', 'Login attempt failed for %user.', array('%user' => $form_state['values']['name']));
+    }
+  }
+  elseif (isset($form_state['flood_control_user_identifier'])) {
+    // Clear past failures for this user so as not to block a user who might
+    // log in and out more than once in an hour.
+    flood_clear_event('failed_login_attempt_user', $form_state['flood_control_user_identifier']);
+  }
+}
+
+/**
+ * Validate word limiter proposal form.
+ */
+function bf_core_validate_proposal_wordlimiter($form, &$form_state) {
+  $values = &$form_state['values'];
+  $limit_intro_text = variable_get('bf_limit_proposal_chars_intro',150);
+  $limit_other_text = variable_get('bf_limit_proposal_chars_other',150);
+ // $intro = strip_tags($values['field_intro'][LANGUAGE_NONE][0]['value']);
+  $intro = $values['field_intro'][LANGUAGE_NONE][0]['value'];
+  $values['field_intro'][LANGUAGE_NONE][0]['value'] = text_summary($intro,'',$limit_intro_text);
+
+  $other_wordlimiter_fields = unserialize(OTHER_WORDLIMITER_FIELDS);
+  $limit_other_text = variable_get('bf_limit_proposal_chars_other',150);
+  foreach ($other_wordlimiter_fields as $wordlimiter_field) {
+    $textRaw = $values['field_' . $wordlimiter_field][LANGUAGE_NONE][0]['value'];
+    $lenghtRaw = strlen($textRaw);
+  $lengthText = strlen(strip_tags($textRaw));
+    $lengthTags = $lenghtRaw - $lengthText;
+    if ($lenghtRaw > $limit_other_text) {
+      $values['field_' . $wordlimiter_field][LANGUAGE_NONE][0]['value'] =  text_summary($textRaw,'filter_html',
+        ($limit_other_text + $lengthTags));
+    }
+
+  }
+}
+
+/**
+ * Validate advpoll form.
+ */
+function bf_core_advpoll_node_form_validate($form, &$form_state) {
+  if (isset($form_state['values']['advpoll_options']['und']) &&
+    is_null($form_state['values']['advpoll_options']['und'][0]['value'])
+  ) {
+    $form_state['values']['advpoll_options']['und'][0]['value'] = 0;
+  }
+}
+
+/**
+ * Validate logo.
+ */
+function bf_core_logo_settings_validate($form, &$form_state) {
+  // Handle file uploads.
+  $validators = array('file_validate_is_image' => array());
+
+  // Check for a new uploaded logo.
+  $file = file_save_upload('logo_upload', $validators);
+  $second_file = file_save_upload('second_logo_upload', $validators, 'public://');
+  if (isset($file)) {
+    // File upload was attempted.
+    if ($file) {
+      // Put the temporary file in form_values so we can save it on submit.
+      $form_state['values']['logo_upload'] = $file;
+    }
+    else {
+      // File upload failed.
+      form_set_error('logo_upload', t('The logo could not be uploaded.'));
+    }
+  }
+  if (isset($second_file)) {
+    // File upload was attempted.
+    if ($second_file) {
+      // Put the temporary file in form_values so we can save it on submit.
+      $form_state['values']['second_logo_upload'] = $second_file;
+    }
+    else {
+      // File upload failed.
+      form_set_error('second_logo_upload', t('The second logo could not be uploaded.'));
+    }
+  }
+
+  // If the user provided a path for a logo or favicon file, make sure a file
+  // exists at that path.
+  if ($form_state['values']['logo_path']) {
+    $path = _system_theme_settings_validate_path($form_state['values']['logo_path']);
+    if (!$path) {
+      form_set_error('logo_path', t('The custom logo path is invalid.'));
+    }
+  }
+
+  // If the user provided a path for a logo or favicon file, make sure a file
+  // exists at that path.
+  if ($form_state['values']['second_logo_path']) {
+    $second_path = _system_theme_settings_validate_path($form_state['values']['second_logo_path']);
+    if (!$second_path) {
+      form_set_error('second_logo_path', t('The second logo path is invalid.'));
+    }
+  }
+}
+
+/**
+ * Submit save type search form
+ */
+function bf_core_search_type_save($form, &$form_state) {
+  $_SESSION['searchOptions'] = $form_state['values']['searchOptions'];
+}
+
+/**
+ * Submit save email for system_site_information page
+ */
+function bf_core_system_site_information_save_email($form, &$form_state) {
+  variable_set('site_mail', $form_state['input']['site_mail']);
+  form_state_values_clean($form_state);
+
+  $values = $form_state['values'];
+  if ($file = $values['logo_upload']) {
+    unset($values['logo_upload']);
+    $filename = file_unmanaged_copy($file->uri);
+    $values['default_logo'] = 0;
+    $values['logo_path'] = $filename;
+    $values['toggle_logo'] = 1;
+  }
+  if (!empty($values['logo_path'])) {
+    $values['logo_path'] = _system_theme_settings_validate_path($values['logo_path']);
+  }
+  if ($file = $values['second_logo_upload']) {
+    unset($values['second_logo_upload']);
+    $file->status = FILE_STATUS_PERMANENT;
+    file_save($file);
+    $filename = file_unmanaged_copy($file->uri);
+    $values['second_logo_path'] = $filename;
+    variable_set('second_logo_path', $filename);
+  }
+  if (!empty($values['second_logo_path'])) {
+    $values['second_logo_path'] = _system_theme_settings_validate_path($values['second_logo_path']);
+  }
+
+  // Save settings limit proposal text.
+  variable_set('bf_limit_proposal_chars_intro', $values['intro']);
+  variable_set('bf_limit_proposal_chars_other', $values['other']);
+
+  variable_set('theme_bf_theme_settings', $values);
+}
+
+/**
+ * Submit delete field form
+ */
+function bf_core_field_delete_form_submit($form, &$form_state) {
+  $form_state['redirect'] = 'admin/config/system/register-form-settings';
+}
+
+
+/**
+ * Validate info article node form
+ */
+function bf_core_info_article_form_validate($form, &$form_state) {
+  $form_state['values']['language'] = 'und';
+}
+
+/**
+ * Implements hook_preprocess_field_multiple_value_form().
+ */
+function bf_core_preprocess_field_multiple_value_form(&$variables) {
+
+  if (isset($variables['element'][0]['#field_name']) &&
+    $variables['element'][0]['#field_name'] == 'field_link' &&
+    $variables['element'][0]['#entity']->type == 'task'
+  ) {
+    $variables['element'][0]['#title'] = '';
+    $variables['element'][0]['url']['#description'] = t('Link is automatically filled for the standard task');
+  }
+}
+
+/**
+ * Altering Date Popup to remove labels and description for specific field
+ */
+function bf_core_date_popup_process_alter(&$element, &$form_state, $context) {
+  if (isset($element['#field']) && in_array($element['#instance']['field_name'], array(
+    'field_date',
+    'field_date_begin',
+    'field_phase_end',
+    'field_date_of_publication'
+  ))
+  ) {
+    $element['date']['#title'] = $context['form'][$element['#field']['field_name']]['und'][0]['#title'];
+  }
+  if ($element['#name'] == '<fieldname>') {
+    unset($element['date']['#description']);
+    unset($element['date']['#title']);
+  }
+}
+
+/**
+ * Function ajax advanced poll submit
+ */
+function poll_view_voting_ajax_submit($form, &$form_state) {
+  poll_view_voting_submit($form, $form_state);
+  return advpoll_form_submit($form, $form_state);
+}
+
+/**
+ * Function advanced poll submit
+ */
+function poll_view_voting_submit($form, &$form_state) {
+
+  $nid = $form_state['build_info']['args'][0]->nid;
+  $data = advpoll_get_form_data($form_state);
+  if ($data->choices) {
+
+    $count = count($data->choices);
+    $votes = $form[$count]['#value'];
+    if ($data->show_results != 'never') {
+      drupal_add_js(array(
+          'advpoll_nid' => array(
+            'nid'    => isset($form_state['build_info']['args'][0]->nid) ? $form_state['build_info']['args'][0]->nid : '',
+            'reload' => TRUE
+          )
+        ),
+        'setting');
+
+
+      if (isset($nid) && is_numeric($nid)) {
+        $node = node_load($nid);
+        $image_dir = 'public://images/' . $node->nid;
+        if (!file_prepare_directory($image_dir)) {
+          drupal_mkdir($image_dir, NULL, TRUE);
+        }
+
+        $sizes = array('100');
+        $clone_node = clone $node;
+        foreach ($sizes as $size) {
+          $plot_uri = $image_dir . '/plot_' . $node->nid . $size . '_' . $size . '.png';
+          $plot_path = drupal_realpath($plot_uri);
+          bf_poll_update_bar($clone_node, $plot_path, $plot_uri, $size, $size, $votes);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Function poll submit
+ */
+function poll_view_voting_poll_submit($form, &$form_state) {
+  $nid = $form_state['build_info']['args'][0]->nid;
+  if (isset($nid) && is_numeric($nid)) {
+    $node = node_load($nid);
+    $image_dir = 'public://images/' . $node->nid;
+    if (!file_prepare_directory($image_dir)) {
+      drupal_mkdir($image_dir, NULL, TRUE);
+    }
+
+    $sizes = array('100', '300', '600');
+    foreach ($sizes as $size) {
+      $plot_uri = $image_dir . '/plot_' . $node->nid . $size . '_' . $size . '.png';
+      $plot_path = drupal_realpath($plot_uri);
+      bf_poll_update_poll_bar($node, $plot_path, $plot_uri, $size, $size, $form_state['values']['choice']);
+    }
+
+  }
+}
+
+/**
+ * Function check exist chart.
+ */
+function bf_core_check_exist_chart($nid, $size) {
+  $image_dir = 'public://images/' . $nid;
+  if (!file_prepare_directory($image_dir)) {
+    drupal_mkdir($image_dir, NULL, TRUE);
+  }
+  $plot_uri = $image_dir . '/plot_' . $nid . $size . '_' . $size . '.png';
+  $plot_path = drupal_realpath($plot_uri);
+  if (file_exists($plot_path)) {
+    return TRUE;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+ * Function redirect after authorization user
+ */
+function bf_core_login_submit($form, &$form_state) {
+  $command = array();
+  $command[] = ctools_ajax_command_redirect('<front>');
+  print ajax_render($command);
+  exit;
+}
+
+/**
+ * Function validate authorization user
+ */
+function bf_core_login_validate($form, &$form_state) {
+  if (isset($_SESSION['messages']) && !count(@$_SESSION['messages']['error']) && !valid_email_address
+  ($form_state['values']['email']) && $form_state['values']['email'] != 'admin'
+  ) {
+    form_set_error('name', t('Incorrect email address'));
+    return FALSE;
+  }
+
+}
+
+/**
+ * Function Total Number of Members on selected commitee with role Participant
+ *
+ * @return
+ *    int
+ */
+
+function bf_core_count_members_for_comitee($committee_target_id, $role = 'Participant', $invite = FALSE) {
+  $query = db_select('field_data_field_committee', 'f');
+  $query->leftJoin('users_roles', 'ur', 'f.entity_id = ur.uid');
+  $query->leftJoin('role', 'r', 'ur.rid = r.rid');
+  $query->condition('f.field_committee_target_id', $committee_target_id);
+  $query->condition('f.entity_type', 'user');
+  $query->condition('r.name', $role);
+  if ($invite) {
+    $query->leftJoin('field_data_field_invite', 'i', 'i.entity_id = f.entity_id');
+    $query->condition('i.field_invite_value', 1);
+    $result = $query->countQuery()
+      ->execute()
+      ->fetchField();
+  }
+  else {
+
+    $result = $query->countQuery()
+      ->execute()
+      ->fetchField();
+    $query->leftJoin('field_data_field_invite', 'i', 'i.entity_id = f.entity_id');
+    $query->condition('i.field_invite_value', 1);
+    $result1 = $query->countQuery()
+      ->execute()
+      ->fetchField();
+    $result = $result - $result1;
+  }
+
+  return $result;
+}
+
+/**
+ * Function Max Number of Members on selected comitee
+ *
+ * @return
+ *    int
+ */
+function bf_core_places_for_committee() {
+  if (count(bf_core_comitee_list())) {
+    $return = array(
+      'members_all'  => floor(variable_get('bf_count_members_all', 450) / count(bf_core_comitee_list())),
+      'members_form' => floor(variable_get('bf_count_members_form',
+        300) / count(bf_core_comitee_list())),
+    );
+  }
+  else {
+    $return = array(
+      'members_all'  => 0,
+      'members_form' => 0,
+    );
+  }
+
+  $return['remainder_all'] = variable_get('bf_count_members_all', 450) - ($return['members_all'] * count
+  (bf_core_comitee_list()));
+  $return['remainder_form'] = variable_get('bf_count_members_form', 300) - ($return['members_form'] * count
+  (bf_core_comitee_list()));
+  return $return;
+}
+
+/**
+ * Function get free count place for commitee
+ *
+ * @return
+ *    boolean
+ */
+function bf_core_is_free_places_for_committee($committee_target_id) {
+  $places_for_committe = bf_core_places_for_committee();
+  $countAllComitee = $places_for_committe['members_form'];
+  $remainder = $places_for_committe['remainder_form'];
+  if (module_exists('bf_invite')) {
+    if (isset($_COOKIE['br_ref']) && bf_invite_check_code($_COOKIE['br_ref'])) {
+      $countAllComitee = $places_for_committe['members_all'];
+      $remainder = $places_for_committe['remainder_all'];
+    }
+  }
+  $list = bf_core_comitee_list();
+  $membersCount = 0;
+  foreach ($list as $comitee) {
+    $membersCount += bf_core_count_members_for_comitee($comitee->nid);
+  }
+  if ((bf_core_count_members_for_comitee($committee_target_id) < $countAllComitee) ||
+    $remainder && (bf_core_count_members_for_comitee($committee_target_id) <
+      $countAllComitee + 1)
+  ) {
+    return TRUE;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+ * Function get free count place for commitee
+ *
+ * @return
+ *    int
+ */
+function bf_core_get_free_places_for_committee($committee_target_id, $invite = FALSE) {
+  $places_for_committe = bf_core_places_for_committee();
+  $countAllComitee = $places_for_committe['members_form'];
+  $countMemberForCommitee = bf_core_count_members_for_comitee($committee_target_id);
+  if (module_exists('bf_invite')) {
+    if (isset($_COOKIE['br_ref']) && bf_invite_check_code($_COOKIE['br_ref']) && bf_register_form_fillinvite_freebase_places($committee_target_id)) {
+      $countAllComitee = $places_for_committe['members_all'] - $places_for_committe['members_form'];
+      $countMemberForCommitee = bf_core_count_members_for_comitee($committee_target_id, TRUE);
+    }
+  }
+  return $countAllComitee - $countMemberForCommitee;
+}
+
+/**
+ * Function Total Number of Members on forum
+ *
+ * @return
+ *    int
+ */
+function bf_core_count_members_forum($invite = FALSE) {
+  $membersCount = 0;
+  $list = bf_core_comitee_list();
+  foreach ($list as $comitee) {
+    $membersCount += bf_core_count_members_for_comitee($comitee->nid, 'Participant', $invite);
+  }
+  return $membersCount;
+}
+
+/**
+ * Function get list publish commitee
+ *
+ * @return
+ *    array
+ */
+function bf_core_comitee_list($description = FALSE) {
+  $query = db_select('node', 'n');
+  $query->condition('type', 'committee');
+  $query->condition('status', 1);
+  $query->fields('n', array('nid', 'title'));
+  if ($description) {
+    $query->leftJoin('field_data_body', 'f', 'f.entity_id = n.nid');
+    $query->fields('f', array('body_summary', 'body_value'));
+  }
+  $result = $query
+    ->execute()
+    ->fetchAllAssoc('nid');
+  return $result;
+}
+
+/**
+ * Function Total Number of Members with a select criteria
+ *
+ * @return
+ *    int
+ */
+function bf_core_count_members_with_a_criteria($criteria = 'field_sex', $value = NULL, $role = 'Participant') {
+  $query = db_select('field_data_' . $criteria, 'f');
+  $query->leftJoin('users_roles', 'ur', 'f.entity_id = ur.uid');
+  $query->leftJoin('role', 'r', 'ur.rid = r.rid');
+  $query->condition('f.' . $criteria . '_value', $value);
+  $query->condition('entity_type', 'user');
+  $query->condition('r.name', $role);
+  $result = $query->countQuery()
+    ->execute()
+    ->fetchField();
+  return $result;
+}
+
+/**
+ * Function Total Number of Members with a select criteria
+ *
+ * @return
+ *    int
+ */
+function bf_core_count_members_with_a_criteria_commitee($criteria = 'field_sex', $value = NULL,
+                                                        $role = 'Participant', $commitee_id = NULL, $invite = FALSE) {
+  $query = db_select('field_data_' . $criteria, 'f');
+  $query->leftJoin('users_roles', 'ur', 'f.entity_id = ur.uid');
+  $query->leftJoin('role', 'r', 'ur.rid = r.rid');
+  $query->leftJoin('field_data_field_committee', 'fd', 'ur.uid=fd.entity_id');
+  $query->condition('f.' . $criteria . '_value', $value);
+  $query->condition('f.entity_type', 'user');
+  $query->condition('fd.field_committee_target_id', $commitee_id);
+  $query->condition('fd.entity_type', 'user');
+  $query->condition('r.name', $role);
+  if ($invite) {
+    $query->leftJoin('field_data_field_invite', 'i', 'i.entity_id = fd.entity_id');
+    $query->condition('i.field_invite_value', 1);
+    $result = $query->countQuery()
+      ->execute()
+      ->fetchField();
+  }
+  else {
+    $result = $query->countQuery()
+      ->execute()
+      ->fetchField();
+    $query->leftJoin('field_data_field_invite', 'i', 'i.entity_id = fd.entity_id');
+    $query->condition('i.field_invite_value', 1);
+    $result1 = $query->countQuery()
+      ->execute()
+      ->fetchField();
+    if ($result) {
+      $result = $result - $result1;
+    }
+  }
+
+  return $result;
+}
+
+/**
+ * Implements hook_field_widget_form_alter().
+ */
+function bf_core_field_widget_form_alter(&$element, &$form_state, $context) {
+  if (isset($element['#entity']->type) && $element['#entity']->type == 'info_article') {
+    $element['summary']['#wysiwyg'] = FALSE;
+  }
+}
+
+/**
+ * Implementation of hook_form_FORM_ID_alter.
+ */
+function bf_core_form_info_article_node_form_alter(&$form, &$form_state, $form_id) {
+  $lang = isset($form['language']['#value']) ? $form['language']['#value'] : LANGUAGE_NONE;
+  $form['body'][$lang][0]['summary']['#required'] = TRUE;
+}
+
+/**
+ * Implements hook_menu().
+ */
+function bf_core_menu() {
+  $items['pollpic/%/%/%'] = array(
+    'title'            => 'render pic',
+    'page callback'    => 'bf_poll_display_chart',
+    'page arguments'   => array(1, 2, 3),
+    'access arguments' => array('access content'),
+    'type'             => MENU_CALLBACK,
+  );
+  $items['is_user'] = array(
+    'page callback'    => 'bf_core_is_user',
+    'access arguments' => array('access content'),
+    'type'             => MENU_CALLBACK,
+  );
+  $items['admin/settings/main-menu-pages'] = array(
+    'title'            => t('Main menu pages'),
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('bf_core_main_menu_pages_settings_form'),
+    'access arguments' => array('access admin_menu'),
+    'type'             => MENU_CALLBACK,
+    'file'             => 'bf_core.main_menu_overrides.inc'
+  );
+  $items['admin/settings/deutch-roles/neutral'] = array(
+    'title'            => t('Role names neutral"'),
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('bf_core_deutch_roles_edit_form'),
+    'access arguments' => array('administer access control'),
+    'file'             => 'bf_core.deutch_roles.inc',
+    'type'             => MENU_CALLBACK,
+  );
+  $items['admin/settings/deutch-roles/feminine'] = array(
+    'title'            => t('Role names feminine'),
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('bf_core_deutch_roles_edit_form'),
+    'access arguments' => array('administer access control'),
+    'file'             => 'bf_core.deutch_roles.inc',
+    'type'             => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+/**
+ * Callback menu path is_user.
+ */
+function bf_core_is_user() {
+  global $user;
+  print $user->uid;
+  exit;
+}
+
+function bf_core_menu_local_tasks_alter(&$data) {
+  if (!empty($data['tabs'])) {
+    if (isset($data['tabs'][0])) {
+      foreach ($data['tabs'][0]['output'] as $key => $value) {
+        if ($value['#link']['path'] == 'node/%/revisions') {
+          unset($data['tabs'][0]['output'][$key]);
+        }
+        if ($value['#link']['path'] == 'admin/structure/taxonomy/%/fields') {
+          unset($data['tabs'][0]['output'][$key]);
+        }
+        if ($value['#link']['path'] == 'admin/structure/taxonomy/%/display') {
+          unset($data['tabs'][0]['output'][$key]);
+        }
+        if ($value['#link']['path'] == 'admin/structure/taxonomy/%/translate') {
+          unset($data['tabs'][0]['output'][$key]);
+        }
+        if ($value['#link']['path'] == 'admin/structure/taxonomy/%/edit') {
+          unset($data['tabs'][0]['output'][$key]);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_field_widget_form_alter().
+ */
+function bf_core_form_system_site_information_settings_alter(&$form, &$form_state, $form_id) {
+  //get list of phase
+  $query = db_select('taxonomy_term_data', 't');
+  $query->leftJoin('taxonomy_vocabulary', 'v', 'v.vid = t.vid');
+  $query->condition('v.name', 'Phase');
+  $query->fields('t', array('tid', 'name'));
+  $phases = $query->execute()->fetchAllKeyed();
+  foreach ($phases as $key => $phase) {
+    $phases[$key] = t($phase);
+  }
+
+  $form['bf_phase_fieldset'] = array(
+    '#type'  => 'fieldset',
+    '#title' => t('Phase'),
+  );
+
+  $form['bf_phase_fieldset']['bf_phase_name'] = array(
+    '#title'         => t('Name'),
+    '#type'          => 'select',
+    '#default_value' => variable_get('bf_forum_phase'),
+    '#options'       => $phases,
+  );
+
+  $form['bf_phase_fieldset']['bf_phase_date'] = array(
+    '#type'          => 'date_popup',
+    '#default_value' => variable_get('bf_forum_phase_end'),
+  );
+
+  $form['contact_form_info'] = array(
+    '#title'         => t('Contact ste form info text'),
+    '#type'          => 'text_format',
+    '#default_value' => variable_get('contact_site_form_info', ''),
+    '#format'        => 'full_html',
+  );
+
+  $form['comment_close_info'] = array(
+    '#title'         => t('Comment close info text'),
+    '#type'          => 'text_format',
+    '#default_value' => variable_get('bf_comment_close_text', ''),
+    '#format'        => 'full_html',
+  );
+
+  $form['#submit'][] = 'bf_core_system_site_phase_submit';
+}
+
+/**
+ * Implements hook_admin_paths_alter().
+ *
+ * Add css file to responsive admin menu
+ */
+function bf_core_admin_paths_alter(&$paths) {
+  if ($paths['admin']) {
+    ctools_add_css('responsive_admin_menu', 'bf_core', 'css');
+  }
+}
+
+/**
+ * Implements hook_form_submit().
+ */
+function bf_core_system_site_phase_submit($form, &$form_state) {
+  $phase = $form_state['values']['bf_phase_name'];
+  $phase_end = $form_state['values']['bf_phase_date'];
+  $contact_form_info = $form_state['values']['contact_form_info']['value'];
+  $comment_close_info = $form_state['values']['comment_close_info']['value'];
+  variable_set('bf_forum_phase', $phase);
+  variable_set('bf_forum_phase_end', $phase_end);
+  variable_set('contact_site_form_info', $contact_form_info);
+  variable_set('bf_comment_close_text', $comment_close_info);
+
+  // get proposals.
+  $query = db_select('node', 'n');
+  $query->leftJoin('field_data_field_phase', 'p', 'p.entity_id = n.nid');
+  $query->condition('n.type', 'proposal');
+  $query->fields('n', array('nid'));
+  $query->fields('p', array('field_phase_tid'));
+  $proposals = $query->execute()->fetchAllKeyed();
+
+  if (count($proposals)) {
+    foreach ($proposals as $nid => $tid) {
+      $node = node_load($nid);
+      $node->field_phase[LANGUAGE_NONE][0]['tid'] = $phase;
+      $node->field_phase_end[LANGUAGE_NONE][0]['value'] = date('Y-m-d H:i:s', strtotime($phase_end));
+      node_save($node);
+    }
+  }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function bf_core_form_contact_site_form_alter(&$form, $form_state, $form_id) {
+  $form['info'] = array(
+    '#weight' => -7,
+    '#markup' => '<div class="contact-site-form-info">' . variable_get('contact_site_form_info', '') . '</div>'
+  );
+
+  $form['phone'] = array(
+    '#title'         => t('Phone'),
+    '#type'          => 'textfield',
+    '#default_value' => '',
+  );
+  $form['#validate'][] = 'bf_core_contact_site_form_validate';
+  $form['#submit'][] = 'bf_core_contact_personal_form_submit';
+}
+
+/**
+ * Contact site form validate.
+ */
+function bf_core_contact_site_form_validate($form, &$form_state) {
+  if (!empty($form_state['values']['phone'])) {
+    drupal_goto('<front>');
+    exit;
+  }
+}
+
+/**
+ * Implements hook_form().
+ */
+function bf_core_info_article_exposed_form($form, &$form_state) {
+  if (isset($_SESSION['sort_by_articles'])) {
+    $sort_by_value = $_SESSION['sort_by_articles'];
+  }
+  else {
+    $sort_by_value = 'field_date_of_publication_value';
+    $_SESSION['sort_by_articles'] = 'field_date_of_publication_value';
+  }
+  if (isset($_SESSION['sort_order_articles'])) {
+    $sort_order_value = $_SESSION['sort_order_articles'];
+  }
+  else {
+    $sort_order_value = 'DESC';
+    $_SESSION['sort_order_articles'] = 'DESC';
+  }
+  $form['sort_by_article'] = array(
+    '#type'          => 'select',
+    '#default_value' => $sort_by_value,
+    '#options'       => array(
+      'field_date_of_publication_value' => t('Date of publication'),
+      'value'                           => t('Recommendations')
+    ),
+  );
+  $form['sort_order_article'] = array(
+    '#type'          => 'select',
+    '#default_value' => $sort_order_value,
+    '#options'       => array(
+      'ASC'  => t('Asc'),
+      'DESC' => t('Desc')
+    ),
+  );
+  $form['submit'] = array(
+    '#type'  => 'submit',
+    '#value' => t('Apply'),
+  );
+  $form['#submit'][] = 'bf_core_info_article_exposed_form_submit';
+  return $form;
+}
+
+/**
+ * Implements hook_form_submit().
+ */
+function bf_core_info_article_exposed_form_submit($form, &$form_state) {
+  $_SESSION['sort_by_articles'] = $form_state['values']['sort_by_article'];
+  $_SESSION['sort_order_articles'] = $form_state['values']['sort_order_article'];
+}
+
+/**
+ * Implements hook_views_query_alter().
+ */
+function bf_core_views_query_alter(&$view, &$query) {
+
+  if ($view->name == 'bf_members' && $view->current_display == 'block') {
+    $editorField = 'field_editors_users__field_data_field_editors.field_editors_target_id';
+    $roleField = 'users_roles.rid';
+    if (is_numeric($view->exposed_raw_input['rid']) && $view->exposed_raw_input['rid'] == 0) {
+      bf_core_views_where_param_set($query->where[1]['conditions'], $roleField, '!=');
+      bf_core_views_where_param_set($query->where[1]['conditions'], $editorField, 'IS NOT NULL');
+    }
+    else {
+      bf_core_views_where_param_set($query->where[1]['conditions'], $editorField, 'unset');
+    }
+  }
+  if ($view->name == "users" && $view->current_display == 'page') {
+    if ($query->where[1]['conditions'][0]['value'] == 0 && $query->where[1]['conditions'][0]['field'] == 'users_roles.rid') {
+      $query->where[1]['conditions'][0]['operator'] = '!=';
+      $query->where[1]['conditions'][1]['operator'] = 'IS NOT NULL';
+    }
+    else {
+      foreach ($query->where[1]['conditions'] as $key => $condition) {
+        if ($condition['field'] == 'field_editors_users__field_data_field_committee.field_committee_target_id') {
+          unset($query->where[1]['conditions'][$key]);
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Function set operator for views where options
+ */
+function bf_core_views_where_param_set(&$where_list, $param_name, $operator = 'unset', $value = 0) {
+  $checkExists = FALSE;
+  foreach ($where_list as $id => $condition) {
+    if ($condition['field'] == $param_name) {
+      if ($operator == 'unset') {
+        unset($where_list[$id]);
+      }
+      elseif ($operator != 'exist') {
+        $where_list[$id]['operator'] = $operator;
+      }
+      if ($value) {
+        $where_list[$id]['value'] = $value;
+      }
+      $checkExists = TRUE;
+    }
+  }
+  return $checkExists;
+}
+
+/**
+ * Implements hook_views_api().
+ */
+function bf_core_views_api() {
+  return array(
+    'api'           => 3,
+    'path'          => drupal_get_path('module', 'bf_core') . '/views',
+    'template path' => drupal_get_path('module', 'bf_core') . '/views',
+  );
+}
+
+/**
+ * Implements hook_query_alter().
+ */
+function bf_core_query_alter(QueryAlterableInterface $query) {
+
+  $is_search = FALSE;
+  foreach ($query->getTables() as $table) {
+    if ($table['table'] == 'search_index') {
+      $is_search = TRUE;
+    }
+  }
+
+  if ($is_search) {
+    $db_or = db_or();
+    if (isset($_SESSION['searchOptions']) && $_SESSION['searchOptions'] != 'all') {
+      $db_or->condition('n.type', $_SESSION['searchOptions'], '=');
+      $query->condition($db_or);
+    }
+    else {
+      $db_or->condition('n.type', 'article', '=');
+      $db_or->condition('n.type', 'proposal', '=');
+      $db_or->condition('n.type', 'page', '=');
+    }
+  }
+
+  if (isset($query->alterMetaData)) {
+    if (isset($query->alterMetaData['view'])) {
+      if ($query->alterMetaData['view']->name == "bf_articles") {
+        //Get a list of all 'group by' in the query
+        $sort =& $query->getOrderBy();
+        if (isset($_SESSION['sort_by_articles']) && isset($_SESSION['sort_order_articles'])) {
+          $sort_by = $_SESSION['sort_by_articles'];
+          $sort_order = $_SESSION['sort_order_articles'];
+        }
+        else {
+          $sort_by = 'field_date_of_publication_value';
+          $sort_order = 'DESC';
+        }
+
+        if ($sort_by == 'field_date_of_publication_value') {
+          if (isset($sort['votingapi_cache_node_sum_value'])) {
+            unset($sort['votingapi_cache_node_sum_value']);
+          }
+          $sort['field_data_field_date_of_publication_field_date_of_publicati'] = $sort_order;
+        }
+        else {
+          if (isset($sort['field_data_field_date_of_publication_field_date_of_publicati'])) {
+            unset($sort['field_data_field_date_of_publication_field_date_of_publicati']);
+          }
+          $sort['votingapi_cache_node_sum_value'] = $sort_order;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_form_submit().
+ */
+function bf_core_user_delete($account) {
+  //Get type of node
+  $query = db_select('field_revision_field_editors', 'fe')
+    ->condition('fe.field_editors_target_id', $account->uid);
+  $query->fields('fe', array('entity_id', 'field_editors_target_id'));
+  $proposals = $query->execute()->fetchAllKeyed();
+
+  if (!empty($proposals)) {
+    foreach ($proposals as $nid => $uid) {
+      $node = node_load($nid);
+      $field_editors = field_get_items('node', $node, 'field_editors');
+      foreach ($field_editors as $fid => $field_editor) {
+        if ($field_editor['target_id'] == $uid) {
+          unset($node->field_editors[LANGUAGE_NONE][$fid]);
+        }
+      }
+      node_save($node);
+    }
+  }
+}
+
+/*
+ * Function for get unique value then sort them.
+ * */
+function bf_core_unique_sort_choice($arrs, $id) {
+  $unique_arr = array();
+  foreach ($arrs AS $arr) {
+
+    if (!in_array($arr[$id], $unique_arr)) {
+      $unique_arr[] = $arr[$id];
+    }
+  }
+  sort($unique_arr);
+  return $unique_arr;
+}
+
+/**
+ * Implements hook_node_update_index().
+ */
+function bf_core_node_update_index($node) {
+  if (isset($node->body['und'][0]['safe_summary'])) {
+    return $node->body['und'][0]['safe_summary'];
+  }
+}
+
+/**
+ * Additional form submission handler for contact_personal_form().
+ *
+ * Remove the cookies set by the form for autofilling user details.
+ *
+ * @see contact_personal_form_submit()
+ */
+function bf_core_contact_personal_form_submit($form, &$form_state) {
+  user_cookie_delete('name');
+  user_cookie_delete('mail');
+}
+
+/*
+ * Get count of active users.
+ */
+function bf_core_get_active_users() {
+  $query = db_select('users', 'u')
+    ->condition('u.status', 1);
+  $query->addExpression('COUNT(*)');
+  $count = $query->execute()->fetchField();
+
+  return $count;
+}
+
+/*
+ * Get gender role.
+ */
+function bf_core_get_gender_role($rolesText = '', $gender = 'Male', $neutral = FALSE) {
+
+  global $language;
+  $outputRolesText = '';
+
+  if ($language->language == 'en' || $gender == 'Male') {
+    $en_roles = array(
+      'Admin',
+      'Manager',
+      'Participant',
+      'Member',
+      'Expert',
+      'Project coordinator',
+      'Editor'
+    );
+    $roles_list = array(
+      t('Admin'),
+      t('Manager'),
+      t('Participant'),
+      t('Member'),
+      t('Expert'),
+      t('Project coordinator'),
+      t('Editor')
+    );
+
+  }
+  else {
+    if ($neutral) {
+      $path = drupal_get_path('module', 'bf_core') . '/includes/deutch_roles/neutral.inc';
+    }
+    else {
+      $path = drupal_get_path('module', 'bf_core') . '/includes/deutch_roles/feminine.inc';
+    }
+    if (file_exists($path)) {
+      $roles_list = explode("\n", file_get_contents($path));
+      $en_roles = array(
+        'Admin',
+        'Manager',
+        'Participant',
+        'Member',
+        'Expert',
+        'Project coordinator',
+        'Editor',
+        'Redakteur für'
+      );
+    }
+    else {
+      // Default deutch roles text.
+      $roles_list = array(
+        'Technische Administratorin',
+        'Forum-Administratorin',
+        'Teilnehmerin',
+        'Teilnehmerin Auftaktwerkstatt',
+        'Expertin',
+        'Projektkoordinatorin',
+        'Bürgerredakteurin',
+        'Redakteurin für'
+      );
+    }
+  }
+
+  $outputRolesText = str_replace($en_roles, $roles_list, $rolesText);
+  return $outputRolesText;
+}

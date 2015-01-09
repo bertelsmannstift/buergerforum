@@ -1,0 +1,45 @@
+<?php
+
+/**
+ * Implements hook_form_alter().
+ */
+function bf_comment_subject_form_comment_form_alter(&$form, $form_state, $form_id) {
+  if ($form_id == 'comment_node_proposal_form') {
+    $form['#after_build'][] = 'bf_comment_subject_comment_form_after_build';
+  }
+  if ($form_id == 'comment_node_page_form') {
+    if (empty($form_state['build_info']['args'][0]->pid)) {
+      $form['subject_field'][LANGUAGE_NONE][0]['value']['#required'] = TRUE;
+      if ($form['#node']->field_page_type[LANGUAGE_NONE][0]['value'] == 'FAQ') {
+        $form['subject_field'][LANGUAGE_NONE][0]['value']['#title'] = t('Your question (max 128 symbols)');
+        $form['comment_body'][LANGUAGE_NONE][0]['value']['#title'] = t('Your explanation');
+      } elseif ($form['#node']->field_page_type[LANGUAGE_NONE][0]['value'] == 'CAS') {
+        $form['subject_field'][LANGUAGE_NONE][0]['value']['#title'] = t('Your contribution (max 128 symbols)');
+        $form['comment_body'][LANGUAGE_NONE][0]['value']['#title'] = t('Your explanation');
+      }
+      $form['comment_body'][LANGUAGE_NONE][0]['value']['#required'] = FALSE;
+      $form['#after_build'][] = 'bf_comment_subject_comment_page_form_after_build';
+    }
+  }
+}
+
+/**
+ *  After build comment form.
+ */
+function bf_comment_subject_comment_form_after_build($form, &$form_state) {
+  $form['subject_field']['#maxlength'] = 75;
+  $form['subject_field'][LANGUAGE_NONE][0]['value']['#maxlength'] = 75;
+
+  return ($form);
+}
+
+
+/**
+ *  After build comment page form.
+ */
+function bf_comment_subject_comment_page_form_after_build($form, &$form_state) {
+  $form['subject_field']['#maxlength'] = 128;
+  $form['subject_field'][LANGUAGE_NONE][0]['value']['#maxlength'] = 128;
+
+  return ($form);
+}

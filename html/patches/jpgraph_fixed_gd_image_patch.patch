@@ -1,0 +1,17 @@
+Index: sites/all/libraries/jpgraph/src/gd_image.inc.php
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/libraries/jpgraph/src/gd_image.inc.php	(revision e9c903ce2587bf68550277089a01928daa189dc1)
++++ sites/all/libraries/jpgraph/src/gd_image.inc.php	(revision )
+@@ -107,7 +107,8 @@
+             imageantialias($this->img,$aFlg);
+         }
+         else {
+-            JpGraphError::RaiseL(25128);//('The function imageantialias() is not available in your PHP installation. Use the GD version that comes with PHP and not the standalone version.')
++         //   JpGraphError::RaiseL(25128);//('The function imageantialias() is not available in your PHP installation.
++         // Use the GD version that comes with PHP and not the standalone version.')
+         }
+     }
+ 

@@ -1,0 +1,105 @@
+<?php
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function bf_stat_ctools_plugin_directory($owner, $plugin_type) {
+  if ($owner == 'ctools' && $plugin_type == 'content_types') {
+    return 'plugins/content_types';
+  }
+}
+
+/**
+ * Implementation of theme_preprocess_views_view_table().
+ */
+function bf_stat_preprocess_views_view_table(&$vars){
+  if($vars['view']->name == 'task_statistics'){
+    foreach ($vars['rows'] as $key=>$row){
+      $nid = 0;
+      $users_cnt = 0;
+      $finished_cnt = 0;
+      $finished = array();
+      if(!empty($row['nothing']) && is_numeric($row['nothing'])){
+        $nid = $row['nothing'];
+      }
+      if(!empty($row['field_task_finished'])){
+        $finished = explode(',', $row['field_task_finished']);
+        $finished_cnt = count($finished);
+        $vars['rows'][$key]['field_task_finished'] = $finished_cnt;
+      }
+      if(!empty($row['field_users'])){
+        $users = explode(',', $row['field_users']);
+        $users = array_merge($users, $finished);
+        $users = array_unique($users);
+        $users_cnt = count($users);
+        $vars['rows'][$key]['field_users'] = $users_cnt; 
+      }
+      
+      if($users_cnt > 0){
+        $vars['rows'][$key]['nothing'] = round($finished_cnt * 100 / $users_cnt, 2);
+      }else{
+        $vars['rows'][$key]['nothing'] = '-';
+      }
+    }
+  }
+  if($vars['view']->name == 'committee_statistic'){
+    foreach ($vars['rows'] as $key=>$row){
+      if(!empty($row['nid'])){
+        $cnt = bf_core_get_free_places_for_committee($row['nid']);
+        $vars['rows'][$key]['nid'] = $cnt;
+      }
+    } 
+  }
+  if($vars['view']->name == 'polls_history'){
+    foreach ($vars['rows'] as $key=>$row){
+      if(!empty($row['nid'])){
+        if(bf_core_check_exist_chart($row['nid'],'100')){
+          $src = file_create_url('public://images/'.$row['nid'].'/plot_'.$row['nid'].'100_100.png');
+          $vars['rows'][$key]['nid'] = '<img src="'.$src.'" />';
+        }else{
+          $vars['rows'][$key]['nid'] = t('No image');
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Check if user has unanswered questions
+ */
+function bf_stat_get_count_unanswered_questions(){
+  $query = db_select('comment', 'c1');
+  $query->leftJoin('comment', 'c2', 'c2.pid = c1.cid');
+  $query->condition('c2.pid', NULL, 'IS NULL')
+  ->condition('c1.pid', 0);
+  $query->addExpression('COUNT(*)');
+  $result = $query->execute()->fetchField();
+  return $result;
+}
+
+/**
+ * Check if user has unanswered questions
+ */
+function bf_stat_get_count_questions(){
+  $query = db_select('comment', 'c1');
+  $query->condition('c1.pid', 0);
+  $query->addExpression('COUNT(*)');
+  $result = $query->execute()->fetchField();
+  return $result;
+}
+
+/**
+ * Check if user has unanswered questions
+ */
+function bf_stat_get_count_answers(){
+  $query = db_select('comment', 'c1');
+  $query->condition('c1.pid', 0, '<>');
+  $query->addExpression('COUNT(*)');
+  $result = $query->execute()->fetchField();
+  return $result;
+}
+
+
+function bf_stat_form_user_profile_form_alter(&$form, &$form_state, $form_id){
+  $form['field_message_count']['#access'] = false;
+}

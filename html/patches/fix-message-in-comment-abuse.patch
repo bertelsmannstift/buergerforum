@@ -1,0 +1,25 @@
+Index: sites/all/modules/contrib/comment_abuse/comment_abuse.pages.inc
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/comment_abuse/comment_abuse.pages.inc	(revision 6f22be43d0d9bb6656fcb0e106ab9aab54c75c6a)
++++ sites/all/modules/contrib/comment_abuse/comment_abuse.pages.inc	(revision )
+@@ -26,7 +26,7 @@
+     // Replace abuse link with recieved message.
+     $commands[] = ajax_command_replace(
+       '.comment-abuse-' . $cid,
+-      '<span class="abuse-notice">' . check_plain($message) . '</span>'
++      '<span class="abuse-notice"></span>'
+     );
+ 
+     // Invoke rules event.
+@@ -42,7 +42,7 @@
+     // Replace abuse link with recieved message.
+     $commands[] = ajax_command_replace(
+       '.comment-abuse-' . $cid,
+-      '<span class="abuse-notice">' . check_plain($message) . '</span>'
++      '<span class="abuse-notice"></span>'
+     );
+   }
+ 

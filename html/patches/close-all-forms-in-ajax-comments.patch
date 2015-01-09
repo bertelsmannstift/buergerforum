@@ -1,0 +1,25 @@
+Index: sites/all/modules/contrib/ajax_comments/ajax_comments.module
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/ajax_comments/ajax_comments.module	(revision dffedfe707c99ce1cf358a3440a3d96510176138)
++++ sites/all/modules/contrib/ajax_comments/ajax_comments.module	(revision )
+@@ -524,6 +524,8 @@
+   $form = drupal_render($form_build);
+ 
+   // Add the new form.
++  $commands[] = ajax_command_replace('.pane-add-comment-link .comment-form', '');
++  $commands[] = ajax_command_css('.add-comment-btn', array('display' => 'inline'));
+   if ($pid) {
+     $commands[] = ajax_command_after('#comment-wrapper-' . $pid . '>.comment', $form);
+   }
+@@ -550,6 +552,8 @@
+   $form = drupal_render($form_build);
+ 
+   // Replace comment with form.
++  $commands[] = ajax_command_replace('.pane-add-comment-link .comment-form', '');
++  $commands[] = ajax_command_css('.add-comment-btn', array('display' => 'inline'));
+   $commands[] = ajax_command_replace('#comment-wrapper-' . $comment->cid . ' >.comment', $form);
+ 
+   return array('#type' => 'ajax', '#commands' => $commands);

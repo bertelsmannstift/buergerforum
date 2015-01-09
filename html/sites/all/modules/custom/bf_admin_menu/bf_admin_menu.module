@@ -1,0 +1,47 @@
+<?php
+
+/*
+ * @file
+ * Administration menu.
+ */
+
+define('PROJECT_MANAGER_MENU', 'menu-project-manager');
+
+/**
+ * Implements hook_init().
+ */
+function bf_admin_menu_init() {
+
+}
+
+/**
+ * Implements hook_permission().
+ */
+function bf_admin_menu_permission() {
+  return array(
+      'access admin_menu' => array(
+          'title' => t('Access admin menu'),
+      ),      
+  );
+}
+
+
+/**
+ * Implements hook_page_build().
+ */
+function bf_admin_menu_page_build(&$page) {
+  if (path_is_admin(current_path()) && user_access('access admin_menu')) {
+    $menu = menu_tree(PROJECT_MANAGER_MENU);
+
+    $page['page_top']['bf_admin_menu'] = array(
+      '#markup'   => '<div id="bf_admin_menu">' . drupal_render($menu) . '</div>',
+      '#attached' => array(
+        'css' => array(
+          drupal_get_path('module', 'bf_admin_menu') . '/bf_admin_menu.css' => array('every_page' => TRUE),
+        ),
+      ),
+    );
+  }
+  drupal_add_css(drupal_get_path('theme', 'bf_theme') . '/assets/stylesheets/bf-backend.css', array('weight' => 999));
+  drupal_add_js(drupal_get_path('theme', 'bf_theme') . '/assets/js/admin.js');
+}

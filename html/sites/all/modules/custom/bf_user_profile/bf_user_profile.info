@@ -1,0 +1,9 @@
+; $Id$
+name = BF user profile
+description = Plugins and customization for user profile page
+core = 7.x
+package = BF
+version = 7.x-1.0
+
+dependencies[] = ctools
+dependencies[] = panels

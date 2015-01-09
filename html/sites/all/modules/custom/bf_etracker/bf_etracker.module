@@ -1,0 +1,51 @@
+<?php
+
+/**
+ * @file
+ * The main file for the etracker module.
+ *
+ * eTracker is a web controlling service that provides real time web traffic
+ * analysis and this module provides easy and ismple integration.
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function bf_etracker_menu($may_cache = TRUE) {
+  $items = array();
+  $access_config = array('administer site configuration');
+  if ($may_cache) {
+    $items['admin/settings/etracker'] = array(
+      'title' => t('BF ETracker'),
+      'description' => t('Change eTracker integration settings'),
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('bf_etracker_settings_form'),
+      'access arguments' => $access_config,
+    );
+  }
+  return $items;
+}
+
+/**
+ * admin/settings/etracker form
+ */
+function bf_etracker_settings_form() {
+  $form['etracker_active'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Activate eTracker.'),
+    '#default_value' => variable_get('etracker_active', 0),
+  );
+
+  $eTracker_text = variable_get('etracker_text', '');
+  if (isset($eTracker_text['value'])) {
+    $eTracker_text = $eTracker_text['value'];
+  }
+  $form['etracker_text'] = array(
+    '#title' => t('eTracker text'),
+    '#type' => 'text_format',
+    '#default_value' => $eTracker_text,
+    '#format' => 'php_code',
+  );
+
+  return system_settings_form($form);
+}

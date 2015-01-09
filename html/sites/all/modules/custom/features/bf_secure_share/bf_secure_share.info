@@ -1,0 +1,11 @@
+name = BF Secure share
+core = 7.x
+package = BF Features
+version = 7.x-0.8
+project = bf_secure_share
+dependencies[] = ctools
+dependencies[] = secureshare
+features[ctools][] = secureshare:default_secureshare_profiles:2
+features[features_api][] = api:2
+features[secureshare_profiles][] = Info article
+features[secureshare_profiles][] = Info article de

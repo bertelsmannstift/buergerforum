@@ -1,0 +1,29 @@
+@media (max-width: 724px) {
+    body.adminimal-menu div#admin-menu a, body.adminimal-menu div#admin-menu span,
+    body.adminimal-menu #admin-menu .dropdown li.admin-menu-toolbar-category a,
+    #admin-menu-account a{
+        font-size: 11px;
+    }
+}
+@media (max-width: 1024px) and (orientation:portrait) {
+    body.adminimal-menu div#admin-menu a, body.adminimal-menu div#admin-menu span,
+    body.adminimal-menu #admin-menu .dropdown li.admin-menu-toolbar-category a,
+    #admin-menu-account a{
+        font-size: 10px;
+    }
+}
+@media (max-width: 685px) {
+    body.adminimal-menu div#admin-menu a, body.adminimal-menu div#admin-menu span,
+    body.adminimal-menu #admin-menu .dropdown li.admin-menu-toolbar-category a,
+    body.adminimal-menu #admin-menu #admin-menu-account a {
+        font-size: 10px;
+    }
+}
+
+@media (max-width: 630px) {
+    body.adminimal-menu div#admin-menu a, body.adminimal-menu div#admin-menu span,
+    body.adminimal-menu #admin-menu .dropdown li.admin-menu-toolbar-category a,
+    body.adminimal-menu #admin-menu #admin-menu-account a {
+        font-size: 9px;
+    }
+}

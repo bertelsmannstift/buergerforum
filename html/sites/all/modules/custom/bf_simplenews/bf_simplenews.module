@@ -1,0 +1,209 @@
+<?php
+
+/**
+ * @file
+ * Synchronize user subscriptions based on user roles membership.
+ *
+ * Each newsletter consists of a list of roles to automatically subscribe/unsubscribe.
+ */
+define('ALTERNATE_MEMBER_ROLE_ID',19);
+define('EDITOR_ROLE_ID',20);
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ *
+ * Add our settings to the newsletter add/edit settings page.
+ */
+function bf_simplenews_form_simplenews_admin_category_form_alter(&$form, $form_state) {
+  $role_newsletters = variable_get('simplenews_roles_tids_rids', array());
+  $auto_remove = variable_get('simplenews_roles_auto_remove', array());
+
+  $user_roles = user_roles(TRUE);
+  foreach ($user_roles as $rid => $user_role) {
+    $user_roles[$rid] = t($user_role);
+  }
+  $user_roles[ALTERNATE_MEMBER_ROLE_ID] = t('Member');
+  $user_roles[EDITOR_ROLE_ID] = t('Editor');
+  unset($user_roles[DRUPAL_AUTHENTICATED_RID]);
+  $form['simplenews_roles']['roles'] = array(
+    '#type' => 'checkboxes',
+    '#title' => t('Automatically subscribe users in the following roles to this newsletter'),
+    '#options' => $user_roles,
+    '#default_value' => isset($role_newsletters[$form['tid']['#value']]) ? $role_newsletters[$form['tid']['#value']] : array(),
+  );
+  $form['simplenews_roles']['auto_remove'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Auto remove'),
+    '#default_value' => isset($auto_remove[$form['tid']['#value']]) ? $auto_remove[$form['tid']['#value']] : 1,
+  );
+
+  $form['#submit'][] = 'bf_simplenews_newsletter_submit';
+}
+
+/**
+ * Forms API callback; additional submit handler for newsletter form.
+ *
+ * Every submit leads to a resync.
+ */
+function bf_simplenews_newsletter_submit($form, &$form_state) {
+  $tid = $form_state['values']['tid'];
+  $roleids = array_values(array_filter($form_state['values']['roles']));
+  // Update subscriptions
+  $role_newsletters = variable_get('simplenews_roles_tids_rids', array());
+
+  if (count($roleids) > 0) {
+
+    foreach ($roleids as $roleid) {
+
+      if ($roleid == EDITOR_ROLE_ID) {
+        bf_simplenews_update_subscriptions($tid);
+      }
+      if ($roleid == ALTERNATE_MEMBER_ROLE_ID) {
+        $only_unsubscribe = TRUE;
+        bf_simplenews_update_subscriptions($tid,$only_unsubscribe,TRUE);
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_node_insert().
+ */
+function bf_simplenews_node_insert($node) {
+  if ($node->type == 'proposal') {
+    foreach (variable_get('simplenews_roles_tids_rids', array()) as $tid => $rids) {
+      if (in_array(EDITOR_ROLE_ID, $rids)) {
+        bf_simplenews_update_subscriptions($tid);
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_node_update().
+ */
+function bf_simplenews_node_update($node) {
+  if ($node->type == 'proposal') {
+    foreach (variable_get('simplenews_roles_tids_rids', array()) as $tid => $rids) {
+      // For editors.
+      if (in_array(EDITOR_ROLE_ID, $rids)) {
+        bf_simplenews_update_subscriptions($tid);
+      }
+    }
+  }
+}
+
+
+/**
+ * API function
+ *
+ * A function that synchronizes users and newsletter categories according to user roles.
+ */
+function bf_simplenews_update_subscriptions($tid,$only_unsubscribe = FALSE, $only_member = FALSE) {
+  $sync_done = TRUE;
+
+  if ($only_member) {
+    $subscribe_limit = variable_get('simplenews_roles_subscribe_limit', 1000);
+
+    $subquery = db_select('simplenews_subscriber', 'subscriber');
+
+    $subquery->leftJoin('simplenews_subscription', 'subscription', 'subscriber.snid = subscription.snid');
+    $subquery->fields('subscriber', array('uid'));
+    $subquery->condition('subscription.tid', $tid);
+    $subquery->condition('subscription.status', SIMPLENEWS_SUBSCRIPTION_ACTIVE);
+
+    $query = db_select('users', 'u')->distinct();
+    $query->fields('u', array('mail','status'));
+
+    $query->condition('u.uid', 0, '>');
+    $query->condition('u.uid', $subquery, 'NOT IN');
+
+    $not_members = db_select('users_roles', 'ur');
+    $not_members->fields('ur', array('uid'));
+
+    $query->condition('u.uid', $not_members,'NOT IN');
+    $query->range(0, $subscribe_limit);
+    $subscribe = $query->execute();
+
+    // Users to subscribe
+    foreach ($subscribe as $account) {
+
+      if ($account->status) {
+        simplenews_subscribe_user($account->mail, $tid, FALSE, 'simplenews_roles');
+      }
+    }
+    return $sync_done;
+  }
+
+  // Unsubscribe query
+  $auto_remove = variable_get('simplenews_roles_auto_remove', array());
+
+  if (!isset($auto_remove[$tid]) || $auto_remove[$tid]) {
+
+    // Define how many items to unsubscribe per each cron.
+    $unsubscribe_limit = variable_get('simplenews_roles_unsubscribe_limit', 1000);
+
+    $subquery = db_select('users', 'u')->distinct();
+    $subquery->fields('u', array('uid'));
+    $subquery->join('field_data_field_editors', 'fe', 'u.uid = fe.field_editors_target_id');
+
+    $query = db_select('simplenews_subscriber', 'subscriber');
+    $query->fields('subscriber', array('mail'));
+    $query->leftJoin('simplenews_subscription', 'subscription', 'subscriber.snid = subscription.snid');
+    $query->condition('subscription.tid', $tid);
+    $query->condition('subscription.status', SIMPLENEWS_SUBSCRIPTION_ACTIVE);
+    $query->condition('subscriber.uid', $subquery, 'NOT IN');
+    $query->range(0, $unsubscribe_limit);
+    $unsubscribe = $query->execute();
+
+    $i = 1;
+    foreach ($unsubscribe as $account) {
+      simplenews_unsubscribe_user($account->mail, $tid, FALSE, 'simplenews_roles');
+      $i++;
+    }
+  }
+
+  if ($only_unsubscribe) return $sync_done;
+
+  // Define how many items to subscribe per each cron.
+  $subscribe_limit = variable_get('simplenews_roles_subscribe_limit', 1000);
+
+  // Build subscribe query
+  $subquery = db_select('simplenews_subscriber', 'subscriber');
+  $subquery->fields('subscriber', array('uid'));
+  $subquery->leftJoin('simplenews_subscription', 'subscription', 'subscriber.snid = subscription.snid');
+  $subquery->condition('subscription.tid', $tid);
+  $subquery->condition('subscription.status', SIMPLENEWS_SUBSCRIPTION_ACTIVE);
+
+  $query = db_select('users', 'u')->distinct();
+  $query->fields('u', array('mail','status'));
+  $query->join('field_data_field_editors', 'fe', 'u.uid = fe.field_editors_target_id');
+
+  $query->condition('u.uid', 0, '>');
+  $query->condition('u.status', 1, '=');
+  $query->condition('u.uid', $subquery, 'NOT IN');
+  $query->range(0, $subscribe_limit);
+  $subscribe = $query->execute();
+
+  // Users to subscribe
+  foreach ($subscribe as $account) {
+    if ($account->status) {
+      simplenews_subscribe_user($account->mail, $tid, FALSE, 'simplenews_roles');
+    }
+  }
+  return $sync_done;
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function bf_simplenews_form_simplenews_node_form_alter(&$form, &$form_state, $form_id) {
+  array_unshift($form['#validate'], 'bf_simplenews_simplenews_node_form_validate');
+}
+
+/**
+ * Validate Simple news node form
+ */
+function bf_simplenews_simplenews_node_form_validate($form, &$form_state) {
+  $form_state['values']['status'] = 1;
+}

@@ -1,0 +1,42 @@
+Index: sites/all/modules/contrib/ajax_comments/ajax_comments.js
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/ajax_comments/ajax_comments.js	(revision 6491afafafbd561347f589ffae070d8aeb4908fa)
++++ sites/all/modules/contrib/ajax_comments/ajax_comments.js	(revision )
+@@ -16,7 +16,8 @@
+       //ajaxCommentsScrollForm(commentNumber[1]);
+ 
+       // Don't let people reply over and over.
+-      $(this).parents('.comment-reply').hide();
++      $(this).parents('.links').find('.comment-reply').hide();
++      $(this).parents('.links').find('.comment-reply-mail').hide();
+ 
+     });
+ 
+@@ -34,7 +35,8 @@
+       // This needs to be unbound because the ajax_command callback is still
+       // attached to it. We want to show the form that is already hidden
+       // instead of calling for a new one.
+-      $('a#reply-' + commentNumber[3]).parents('.comment-reply').show();
++      $('a#reply-' + commentNumber[3]).parents('.links').find('.comment-reply').show();
++      $('a#reply-' + commentNumber[3]).parents('.links').find('.comment-reply-mail').show();
+       $('a#reply-' + commentNumber[3]).addClass('clicked').unbind().attr("href", "#").bind({
+         click: function(e) {
+           commentNumber = $(this).attr("id").split('-');
+Index: sites/all/modules/contrib/ajax_comments/ajax_comments.module
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/ajax_comments/ajax_comments.module	(revision 6491afafafbd561347f589ffae070d8aeb4908fa)
++++ sites/all/modules/contrib/ajax_comments/ajax_comments.module	(revision )
+@@ -527,6 +527,7 @@
+   $commands[] = ajax_command_replace('.pane-add-comment-link .comment-form', '');
+   $commands[] = ajax_command_css('.add-comment-btn', array('display' => 'inline'));
+   $commands[] = ajax_command_css('#comment-wrapper-' . $pid.' .comment-reply', array('display' => 'none'));
++  $commands[] = ajax_command_css('#comment-wrapper-' . $pid.' .comment-reply-mail', array('display' => 'none'));
+   if ($pid) {
+     $commands[] = ajax_command_append('#comment-wrapper-' . $pid . ' .fieldset-comment-wrapper', $form);
+   }

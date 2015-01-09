@@ -1,0 +1,15 @@
+Index: sites/all/modules/contrib/panels_breadcrumbs/panels_breadcrumbs.module
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/panels_breadcrumbs/panels_breadcrumbs.module	(revision 19fb324288bcf943626a9956841311f7e9c7343c)
++++ sites/all/modules/contrib/panels_breadcrumbs/panels_breadcrumbs.module	(revision )
+@@ -233,7 +233,6 @@
+ function panels_breadcrumbs_ctools_plugin_pre_alter(&$plugin, $info) {
+   // Modifies the core ctools breadcrumb content-type implementation
+   if ($plugin['name'] == 'page_breadcrumb') {
+-  //  drupal_goto('d');
+     $plugin['all contexts'] = TRUE;
+     $plugin['edit form'] = 'panels_breadcrumbs_page_breadcrumb_content_type_edit_form';
+     $plugin['render callback'] = 'panels_breadcrumbs_page_breadcrumb_content_type_render';

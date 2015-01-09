@@ -1,0 +1,61 @@
+body {
+background-color: transparent;
+font-size: 12pt;
+font-family:'Times New Roman',Times,serif;
+color:#000000;
+}
+
+#admin-menu, #navigation, .site-logo-img, a#logo, .tabs, .pief-field-toolbar, .rate-recommend-btn, .pief-field-empty-entity-field, .pane-secureshare-blocks-default, .pane-menu-menu-menu-for-proposal,
+.history-link, .fa-undo, ul.links, .ctools-modal-comment-abuse-modal-style, .editor-stop a, .editor-enter a, .pane-add-comment-link, #footer ul,
+.view-filters, ul.menu.nav, .page-informationsseite .view-display-id-bf_info_articles_block .views-field-view-node a,
+.pane-privatemessage-form-content-type, .page-buergerprogramm .view-bf-program .views-field-nothing, .pane-views-bf-owlcarousel-block, .started-link,
+.node-type-proposal .pane-node-comment-form 
+{
+display:none !important;
+}
+
+.logobar .sitename {
+padding-left:0;
+}
+
+#logo {
+border-bottom:2px solid #000000;
+}
+
+.pief {
+border:none;
+}
+
+.panel-2col .panel-col-last a:after, .panel-2col .panel-col-last  a:link:after,
+.node-type-info-article .panel-2col .bf-panel-col-last a:after, .node-type-info-article .panel-2col .bf-panel-col-last a:link:after,
+.page-informationsseite .view-display-id-bf_info_articles_block .views-field-title a:after, .page-informationsseite .view-display-id-bf_info_articles_block .views-field-title a:link:after,
+.page-teilnehmeruebersicht .pane-views-bf-members-block .view-content .views-row a:after, .page-teilnehmeruebersicht .pane-views-bf-members-block .view-content .views-row a:link:after,
+.user-editor-articles a:after, .user-editor-articles a:link:after, 
+.page-buergerprogramm .view-bf-program .views-row a:after, .page-buergerprogramm .view-bf-program .views-row a:link:after,
+#breadcrumb a:after, #breadcrumb a:link:after, .field-type-image a:after, .field-type-image a:link:after,
+#main #content .view-bf-main-page.last-news .view-content .views-row a:after, #main #content .view-bf-main-page.last-news .view-content .views-row a:link:after
+{
+display:none;
+}
+
+.comment-collapsed .fieldset-comment-wrapper, .proposal-children-comment {
+display:block !important;
+}
+
+.panel-2col .panel-col-first, .panel-2col .panel-col-last, .page-buergerprogramm .view-bf-program .views-field-view, #main #content .view-bf-main-page.last-news .view-content .views-row {
+float:none !important;
+width:100% !important;
+display:block;
+clear:both;
+padding-bottom:40px;
+}
+
+.page-teilnehmeruebersicht .pane-views-bf-members-block .view-content .views-row {
+float:none !important;
+width:100% !important;
+display: inline-block;
+}
+
+#breadcrumb {
+display:block !important;
+}

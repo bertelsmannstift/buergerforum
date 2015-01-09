@@ -1,0 +1,20 @@
+<?php
+
+/**
+ * @file
+ * Install function for the bf_comment_subject module.
+ */
+
+
+/**
+ * Implements hook_enable().
+ */
+function bf_comment_subject_install() {
+    db_change_field('comment', 'subject', 'subject', array(
+      'description' => 'The comment title.',
+      'type' => 'varchar',
+      'length' => 255,
+      'not null' => TRUE,
+      'default' => '',
+    ));
+}

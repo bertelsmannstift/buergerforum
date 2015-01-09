@@ -1,0 +1,1396 @@
+<?php
+
+/**
+ * Implements hook_menu_alter().
+ */
+function bf_register_form_menu_alter(&$items) {
+  if (strtotime(variable_get('bf_conference_date_day')) + 24*60*60 > time()) {
+    // Ctools registration wizard for standard registration.
+    // Overrides default router item defined by core user module.
+    $items['user/register']['page callback'] = array('bf_register_form_ctools_wizard');
+    // Pass the "first" step key to start the form on step 1 if no step has been specified.
+    $items['user/register']['page arguments'] = array('register');
+    $items['user/register']['access arguments'] = array('registration_access');
+    $items['user/register']['file path'] = drupal_get_path('module', 'bf_register_form');
+    $items['user/register']['file'] = 'bf_register_form_ctools_wizard.inc';
+  } else {
+    $items['user/register'] = array(
+      'title'            => t('Create new account'),
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('user_register_form'),
+      'access arguments' => array('registration_access'),
+      'file path' => drupal_get_path('module', 'bf_register_form'),
+      'file'             => 'bf_register_form_ctools_wizard.inc',
+    );
+  }
+
+
+
+  return $items;
+}
+
+/**
+ * Registration access function
+ * @param $signup
+ *   Object ctools registration cache
+ *
+ * @return
+ *   TRUE if exist ctools registration cache, otherwise FALSE.
+ */
+function registration_access_function($signup) {
+  if (!is_array($signup)) {
+    return FALSE;
+  }
+  else {
+    return TRUE;
+  }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function bf_register_form_menu() {
+  $items['user/register/%'] = array(
+    'title'            => t('Create new account'),
+    'page callback'    => 'bf_register_form_ctools_wizard',
+    'page arguments'   => array(2),
+    'access arguments' => array('registration_access'),
+    'file'             => 'bf_register_form_ctools_wizard.inc',
+    'type'             => MENU_CALLBACK,
+  );
+  $items['admin/config/system/register-form-settings'] = array(
+    'title'            => t('BF Register form settings'),
+    'description'      => t('Configure Register form settings'),
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('bf_register_form_settings_form'),
+    'access arguments' => array('registration_settings'),
+    'file'             => 'includes/bf_register_form_settings.admin.inc',
+    'type'             => MENU_NORMAL_ITEM,
+  );
+
+  $items['admin/statistics/registration-statistics'] = array(
+    'title'            => t('Statistics of registrations'),
+    'page callback'    => array('bf_register_form_statistics'),
+    'access arguments' => array('registration_statistics'),
+    'file'             => 'bf_register_form.admin.inc',
+    'type'             => MENU_CALLBACK,
+    'hidden'           => -1
+  );
+
+  $items['admin/statistics/invitations-sent-statistics'] = array(
+    'title'            => t('Invitations sent'),
+    'page callback'    => array('bf_register_form_statistics_invitations_sent'),
+    'access arguments' => array('registration_statistics'),
+    'file'             => 'bf_register_form.admin.inc',
+    'type'             => MENU_CALLBACK,
+    'hidden'           => -1
+  );
+
+  return $items;
+}
+
+/**
+ * Implementation of hook_admin_menu_output_alter().
+ *
+ * Delete submenu registration-statistics in the admin menu.
+ */
+function bf_register_form_admin_menu_output_alter(&$content) {
+
+  if (isset($content['menu']['admin/statistics/registration-statistics'])) {
+    unset($content['menu']['admin/statistics/registration-statistics']);
+  }
+  return $content;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function bf_register_form_permission() {
+  $perms = array(
+    'registration_access'   => array(
+      'title'       => t('Rule registration_access'),
+      'description' => t('Rule configurations registration_access access permissions.'),
+    ),
+    'registration_settings' => array(
+      'title'       => t('Administer registration formsettings'),
+      'description' => t('Permission to registration form settings page'),
+    ),
+    'registration_statistics' => array(
+      'title'       => t('View registration statistics'),
+      'description' => t('Permission view to registration statistics page'),
+    ),
+  );
+  return $perms;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ *
+ * Edit form for steps
+ */
+function bf_register_form_form_user_register_form_alter(&$form, &$form_state) {
+  $breadcrumb = array();
+  $breadcrumb[] = l(t('Home'), '<front>');
+  $breadcrumb[] = t('Register');
+  drupal_set_title('New account registration');
+// Set Breadcrumbs
+  drupal_set_breadcrumb($breadcrumb);
+  global $user;
+  if ($user->uid == 0) {
+    $form['field_sex']['und']['#title'] = t('Gender');
+    $form['field_sex']['und']['#options']['Male'] = t('Mr.');
+    $form['field_sex']['und']['#options']['Female'] = t('Mrs.');
+
+    //cache data form
+    $signup = bf_register_form_get_page_cache('signup');
+
+    if (strtotime(variable_get('bf_conference_date_day')) + 24*60*60 > time()) {
+      $form['#submit'] = array('ctools_wizard_submit');
+      //step 4, final
+      if (isset($form['buttons']['return'])) {
+
+        if (!is_array($signup)) {
+          $form['#access'] = registration_access_function($signup);
+          return $form;
+        }
+
+        if (is_array($signup) && (!isset($signup['commitee_first_request'])) && bf_conference_change_access()) {
+          $form['#access'] = FALSE;
+          return $form;
+        }
+
+        $groups = field_group_read_groups(array(
+          'name'      => 'user',
+          'bundle'    => 'user',
+          'view_mode' => 'full'
+        ));
+        if (!bf_conference_change_access()) {
+          unset($signup['commitee_first_request']);
+        }
+        $access = TRUE;
+        foreach ($groups['user']['user']['form']['group_extparam']->children as $extparam) {
+          $all_fields_info = field_info_fields();
+          if (!isset($all_fields_info[$extparam])) {
+            continue;
+          }
+          if (!isset($signup[$extparam][0]['value']) || !$signup[$extparam][0]['value']) {
+            $access = FALSE;
+          }
+        }
+        if (!$access) {
+          $form['#access'] = FALSE;
+          return $form;
+        }
+        $form['ctools_trail']['#current'] = array(
+          'title'       => t('Verify your Data'),
+          'description' => t('Please check your data')
+        );
+        $commitee = isset($form_state['signup_object']['commitee_first_request']) ? $form_state['signup_object']['commitee_first_request'] : NULL;
+
+        $validListFields = array(
+          'sex'            => array(t('Gender'), 'field'),
+          'first_name'     => array(t('First name'), 'field'),
+          'last_name'      => array(t('Second name'), 'field'),
+          'displayed_name' => array(t('Display name'), 'field'),
+          'mail'           => array(t('Mail'), 'account')
+        );
+
+        $render = bf_register_form_render_valid_data($validListFields, $signup);
+
+        $form['valid_data'] = array(
+          '#type'        => 'fieldset',
+          '#weight'      => 6,
+          '#collapsible' => FALSE,
+          '#tree'        => FALSE,
+        );
+        $form['valid_data']['verify_data_block'] = array(
+          '#type'   => 'container',
+          'content' => array(
+            '#markup' => '<div class="fieldset-title fieldset-title-empty">&nbsp;</div>' . render($render)
+          ),
+        );
+
+        $groups = field_group_read_groups(array(
+          'name'      => 'user',
+          'bundle'    => 'user',
+          'view_mode' => 'full'
+        ));
+        $validListFields = array();
+        $accessForm = TRUE;
+
+        foreach ($groups['user']['user']['form']['group_extparam']->children as $extparam) {
+          $all_fields_info = field_info_fields();
+          if (!isset($all_fields_info[$extparam])) {
+            continue;
+          }
+          if (!isset($signup[$extparam]['und']) && !isset($signup[$extparam][0]['value'])) {
+            $accessForm = FALSE;
+            continue;
+          }
+          $form['valid_data'][$extparam] = array(
+            '#type'          => 'hidden',
+            '#default_value' => isset($signup[$extparam]['und'])
+              ? $signup[$extparam]['und'][0]['value'] : $signup[$extparam][0]['value']
+          );
+
+          if (isset($signup[$extparam])) {
+
+            if (isset($signup[$extparam]['und']) && $accessForm) {
+              $signup[$extparam]['und'][0]['text'] = $form[$extparam]['und']['#options'][$signup[$extparam]['und'][0]['value']];
+            }
+            elseif ($accessForm) {
+              $signup[$extparam][0]['text'] = $form[$extparam]['und']['#options'][$signup[$extparam][0]['value']];
+            }
+          }
+          $entity_type = 'user';
+          $bundle_name = 'user';
+          $field_name = $extparam;
+          $info = field_info_instance($entity_type, $field_name, $bundle_name);
+          $label = $info['label'];
+
+          $field_name = reset(array_slice(explode('field_', $extparam), 1, 1));
+          $validListFields[$field_name] = array($label, 'extfield');
+        }
+
+        $form['#access'] = $accessForm;
+        if (!count($validListFields)) {
+          $validListFields = array(
+            'age' => array('Age', 'extfield'),
+          );
+        }
+        $render = bf_register_form_render_valid_data($validListFields, $signup);
+        $form['valid_data']['verify_criteria_block'] = array(
+          '#type'   => 'container',
+          'content' => array(
+            '#markup' => '<div class="fieldset-title fieldset-title-empty">&nbsp;</div>' . render($render)
+          ),
+        );
+
+        if (is_array($signup) && isset($signup['commitee_first_request']) && $signup['commitee_first_request'] > 0) {
+          if (!isset($form['field_committee']['und']['#options'][$signup['commitee_first_request']])) {
+            form_set_error('commitee_first_request', t('choose another committee'));
+            drupal_goto('user/register/interests');
+          }
+          $comitee = $form['field_committee']['und']['#options'][$signup['commitee_first_request']];
+          $comiteeId = $signup['commitee_first_request'];
+          $form['valid_data']['field_field_of_interest[und][0][target_id]'] = array(
+            '#type'          => 'hidden',
+            '#default_value' => is_array($signup) && isset($signup['commitee_first_request'])
+              ? $signup['commitee_first_request'] : NULL
+          );
+          $form['valid_data']['field_field_of_interest[und][1][target_id]'] = array(
+            '#type'          => 'hidden',
+            '#default_value' => is_array($signup) && isset($signup['commitee_second_request'])
+              ? $signup['commitee_second_request'] : NULL
+          );
+          $form['field_committee']['und']['#default_value'] = $comiteeId;
+          $form['field_committee_finish'] = array(
+            '#type'          => 'hidden',
+            '#default_value' => $comiteeId
+          );
+          $signup['conference_change'] = 1;
+          bf_register_form_set_page_cache('signup', $signup);
+        }
+        else {
+          $signup['conference_change'] = 0;
+          bf_register_form_set_page_cache('signup', $signup);
+        }
+
+        $time = array();
+        $time[0] = variable_get('bf_conference_date_time_with');
+        $time[1] = variable_get('bf_conference_date_time_by');
+        $validListFields = array();
+        if (is_array($signup) && isset($signup['conference_change']) && $signup['conference_change'] == 1) {
+          $validListFields = array(
+            'comittee' => array(t('Kickoff workshop'), 'text', $comitee)
+          );
+          $validListFields['conference'] = array(
+            t('Place and time'),
+            'text',
+            variable_get('bf_conference_date_day') . t(' from ') .
+            $time[0] . t(' to ') . $time[1] . t(' o&lsquo;clock in ') . variable_get('bf_conference_place')
+          );
+          $validListFields['online'] = array(
+            t('AND online from'),
+            'text',
+            t('from @with to @by', array(
+                '@with' => variable_get('bf_conference_date_online_with'),
+                '@by'   => variable_get('bf_conference_date_online_by'),
+              )
+            )
+          );
+        }
+        else {
+          $validListFields['online'] = array(
+            t('Online workshop'),
+            'text',
+            t('from @with to @by', array(
+                '@with' => variable_get('bf_conference_date_online_with'),
+                '@by'   => variable_get('bf_conference_date_online_by'),
+              )
+            )
+          );
+        }
+
+        $render = bf_register_form_render_valid_data($validListFields, $signup);
+        $form['valid_data']['verify_conference_block'] = array(
+          '#type'   => 'container',
+          'content' => array(
+            '#markup' => '<div class="fieldset-title fieldset-title-empty">&nbsp;</div>' . render($render)
+          ),
+        );
+        $form['valid_data']['i_agree'] = array(
+          '#type'  => 'checkbox',
+          '#title' => t('I agree with the !agreement and accept it', array('!agreement' => l(t('User Agreement'), 'node/35', array('attributes' => array('target' => '_blank'))))),
+          '#required'=>TRUE,
+        );
+
+        //hidden fields
+        $fieldsHidden = array(
+          'field_sex'            => correctGetData($signup['field_sex']),
+          'field_displayed_name' => $signup['field_displayed_name']['und'][0]['value'],
+          'field_last_name'      => $signup['field_last_name']['und'][0]['value'],
+          'field_first_name'     => $signup['field_first_name']['und'][0]['value'],
+          'name'                 => $signup['name'],
+          'mail'                 => $signup['mail']
+        );
+        bf_register_form_hidden_field($form, $fieldsHidden);
+        $fieldsDelete = array(
+          'field_field_of_interest',
+          'actions',
+          'field_phone',
+        );
+        bf_register_form_delete_field($form, $fieldsDelete);
+        $form['pass[pass1]'] = array(
+          '#type'          => 'hidden',
+          '#default_value' => isset($signup['pass']) ? $signup['pass'] : ''
+        );
+        $form['pass[pass2]'] = array(
+          '#type'          => 'hidden',
+          '#default_value' => isset($signup['pass']) ? $signup['pass'] : ''
+        );
+        $form['field_invite[und]'] = array(
+          '#type'          => 'hidden',
+          '#default_value' => 0
+        );
+        $form['buttons']['return']['#value'] = t('Book now');
+        $form['buttons']['previous']['#value'] = t('Edit data');
+        $form['buttons']['previous']['#next'] = '';
+        $form['#submit'] = array('user_register_submit', 'ctools_wizard_submit', 'bf_register_form_submit');
+        array_unshift($form['#submit'], 'bf_register_form_submit');
+        $form['#validate'] = array('bf_register_form_validate', 'user_validate_picture', 'user_register_validate');
+
+        if (!bf_conference_change_access() && isset($signup['conference_change'])) {
+          unset($signup['conference_change']);
+          bf_register_form_set_page_cache('signup', $signup);
+        }
+        return $form;
+      }
+      else {
+        $form['buttons']['next']['#value'] = t('next') . ' >';
+        $form['buttons']['previous']['#value'] = '< ' . t('previous');
+      }
+      //step 1
+      if ($form['buttons']['next']['#next'] == 'organizational_information') {
+        $form['ctools_trail']['#current'] = array(
+          'title'       => t('Personal Information'),
+          'description' => t('Please fill in your personal data')
+        );
+        $form['field_displayed_name']['und'][0]['value']['#description'] = t('Display Name will appear in all your posts as a signature');
+        $form['account']['mail']['#description'] = t('Your e-mail will be used as the username and will not be published');
+        //remove unnecessary fields
+        $fieldsDelete = array(
+          'field_field_of_interest',
+          'field_phone',
+          'actions'
+        );
+
+        bf_register_form_delete_field($form, $fieldsDelete);
+        $fieldsFill = array(
+          'field_first_name'     => 'field',
+          'field_last_name'      => 'field',
+          'field_displayed_name' => 'field',
+          'name'                 => 'account',
+          'mail'                 => 'account'
+        );
+        bf_register_form_fill_field($form, $signup, $fieldsFill);
+        if (is_array($signup)) {
+          $form['field_sex']['und']['#default_value'] = isset($signup['field_sex']) ?
+            $signup['field_sex']['und'][0]['value'] : NULL;
+        }
+        $form['field_first_name']['und'][0]['#title'] = t('First Name');
+        $form['field_last_name']['und'][0]['#title'] = t('Last Name');
+        $form['field_displayed_name']['und'][0]['value']['#title'] = t('Display Name');
+        bf_register_form_delete_dublicate_extrafiedls($form);
+        $form['#attributes']['class']=array();
+      } //step 2
+      elseif ($form['buttons']['next']['#next'] == 'interests' || (!bf_conference_change_access() &&
+          $form['buttons']['next']['#next'] ==
+          'verify_data')
+      ) {
+
+        if (!is_array($signup)) {
+          $form['#access'] = registration_access_function($signup);
+          return $form;
+        }
+
+        $form['ext'] = array(
+          '#type'        => 'fieldset',
+          '#weight'      => 6,
+          '#collapsible' => FALSE,
+          '#tree'        => FALSE,
+        );
+        //titles
+        $form['ctools_trail']['#current'] = array(
+          'title'       => t('Additional Information'),
+          'description' => t('This data will be used to ensure a well-balanced set of participants in each topic')
+        );
+        foreach ($form['#groups']['group_extparam']->children as $item) {
+          $all_fields_info = field_info_fields();
+          if (!isset($all_fields_info[$item])) {
+            continue;
+          }
+
+          $form['ext'][$item] = $form[$item]['und'];
+          $form['ext'][$item]['#title'] = t($form['ext'][$item]['#title']);
+          $form['ext'][$item]['#required'] = TRUE;
+          $form['ext'][$item]['#default_value'] = NULL;
+          unset($form['ext'][$item]['#options']['_none']);
+        }
+        unset($form['account']['name']);
+        unset($form['account']['mail']);
+        unset($form['account']['pass']);
+        $fieldsDelete = array(
+          'field_field_of_interest',
+          'field_phone',
+          'field_sex',
+          'field_displayed_name',
+          'field_last_name',
+          'field_first_name',
+          'actions'
+        );
+        bf_register_form_delete_dublicate_extrafiedls($form);
+        bf_register_form_delete_field($form, $fieldsDelete);
+
+        if (is_array($signup)) {
+          foreach ($form['ext'] as $key => $field_ext) {
+            $all_fields_info = field_info_fields();
+            if (!isset($all_fields_info[$key])) {
+              continue;
+            }
+            if (is_array($field_ext) && isset($signup[$key])) {
+              $form['ext'][$key]['#default_value'] = isset($signup[$key]['und'])
+                ? $signup[$key]['und'][0]['value'] : $signup[$key][0]['value'];
+              unset($form['ext'][$key]['#options']['_none']);
+            }
+          }
+        }
+
+        $form['#validate'] = array('user_validate_picture', 'user_register_validate');
+      } //step 3
+      elseif ($form['buttons']['next']['#next'] == 'verify_data') {
+        if (!is_array($signup)) {
+          $form['#access'] = registration_access_function($signup);
+          return $form;
+        }
+        if (!bf_conference_change_access()) {
+          $form['#access'] = FALSE;
+          return $form;
+        }
+        if (isset($_SESSION['messages']['error'])) {
+          foreach ($_SESSION['messages']['error'] as $message) {
+            if ($message==t('choose another committee')) {
+              $setErrorJs = array(
+                'RegistrationError' => array(
+                  'field' => 'commitee_first_request',
+                  'text'  => t('Choose another committee'),
+                  'id'=>'edit-data-block'
+                )
+              );
+              drupal_add_js($setErrorJs, 'setting');
+              unset($signup['commitee_first_request']);
+              bf_register_form_set_page_cache('signup', $signup);
+            }
+          }
+        }
+        //set titles
+        $form['ctools_trail']['#current'] = array(
+          'title'       => t('Area of ​​Interest'),
+          'description' => t('Please choose a topics that you would like to participate in')
+        );
+        $comitee_list = bf_core_comitee_list(true);
+        $form['commitee_set'] = array(
+          '#type'        => 'fieldset',
+          '#weight'      => 6,
+          '#collapsible' => FALSE,
+          '#tree'        => FALSE,
+        );
+        $render = bf_register_form_render_table_commitees($comitee_list, $signup, $form);
+        $form['commitee_set']['data_block'] = array(
+          '#type'   => 'container',
+          'content' => array(
+            '#markup' => render($render)
+          ),
+        );
+        $form['#attached']['js'][] = drupal_get_path('module', 'bf_register_form') . '/js/dependent_select.js';
+        $fieldsDelete = array(
+          'field_field_of_interest',
+          'field_phone',
+          'account',
+          'field_sex',
+          'field_displayed_name',
+          'field_last_name',
+          'field_first_name',
+          'actions'
+        );
+        bf_register_form_delete_dublicate_extrafiedls($form);
+        bf_register_form_delete_field($form, $fieldsDelete);
+        $form['#validate'] = array('user_validate_picture', 'user_register_validate');
+        $form['#submit'][] = 'bf_register_form_submit_edit_commitee';
+      }
+    } else {
+      $form['ext'] = array(
+        '#type'        => 'fieldset',
+        '#collapsible' => FALSE,
+        '#tree'        => FALSE
+      );
+      $form['ext']['info'] = array(
+        '#markup' => t('Optional information for statistical purposes:'),
+      );
+      foreach ($form['#groups']['group_extparam']->children as $item) {
+        $all_fields_info = field_info_fields();
+        if (!isset($all_fields_info[$item])) {
+          continue;
+        }
+
+        $form['ext'][$item] = $form[$item]['und'];
+        $form['ext'][$item]['#title'] = t($form['ext'][$item]['#title']);
+        $form['ext'][$item]['#required'] = FALSE;
+        $form['ext'][$item]['#default_value'] = NULL;
+        unset($form['ext'][$item]['#options']['_none']);
+      }
+
+      foreach ($form['ext'] as $key => $field_ext) {
+        if (is_array($field_ext) && isset($form['ext'][$key]['#options'])) {
+          $form['ext'][$key]['#default_value'] = 0;
+          array_unshift($form['ext'][$key]['#options'], "-");
+        }
+      }
+
+      $validListFields['online'] = array(
+        t('Online workshop'),
+        'text',
+        t('from @with to @by', array(
+            '@with' => variable_get('bf_conference_date_online_with'),
+            '@by'   => variable_get('bf_conference_date_online_by'),
+          )
+        )
+      );
+      $render = bf_register_form_render_valid_data($validListFields, $signup);
+      $form['valid_data']['verify_conference_block'] = array(
+        '#type'   => 'container',
+        'content' => array(
+          '#markup' => '<div class="fieldset-title fieldset-title-empty">&nbsp;</div>' . render($render)
+        ),
+      );
+      $form['valid_data']['i_agree'] = array(
+        '#type'  => 'checkbox',
+        '#title' => t('I agree with the !agreement and accept it', array('!agreement' => l(t('User Agreement'), 'node/35', array('attributes' => array('target' => '_blank'))))),
+        '#required'=>TRUE,
+      );
+      $form['actions']['submit']['#value'] = t(' Register ');
+      array_unshift($form['#submit'], 'bf_register_form_new_submit');
+    }
+
+  }
+}
+
+function bf_register_form_add_comitee_options($comitees_list, $titles = FALSE) {
+  $comitees_options = array();
+  if (is_array($comitees_list) && count($comitees_list)) {
+    foreach ($comitees_list as $comitee) {
+      if ($titles) {
+        $comitees_options[] = '<div class="radio-commitee">' . $comitee->title . '</div>';
+      }
+      else {
+        $comitees_options[$comitee->nid] = '';
+      }
+    }
+  }
+  return (array) $comitees_options;
+}
+
+/**
+ * Function check active conference
+ *
+ * @return
+ *   Access register user(boolean type)
+ */
+function bf_conference_change_access() {
+  $countMembers = bf_conference_count_users();
+  $countMax = bf_conference_maxcount_users();
+  $preparation=bf_conference_isphase_preparation();
+  if (strtotime(variable_get('bf_conference_date_day')) + 24*60*60 >= time()
+    && $countMembers < $countMax && $preparation
+  ) {
+    return TRUE;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+ * Function check is phase = preparation
+ *
+ * @return
+ *    TRUE if currect phase is preparation, otherwise FALSE.
+ */
+function bf_conference_isphase_preparation() {
+  $preparation = TRUE;
+  if (!variable_get('bf_forum_phase')) {
+    $preparation = TRUE;
+  }
+  elseif (variable_get('bf_forum_phase') && (($phase = taxonomy_term_load(variable_get('bf_forum_phase', 1 ))->name == 'Vorbereitung') or ($phase = taxonomy_term_load(variable_get('bf_forum_phase', 1 ))->name == 'Preparation'))
+  ) {
+    $preparation = TRUE;
+  }
+  else {
+    $preparation = FALSE;
+  }
+  return $preparation;
+}
+
+/**
+ * Function get count register users
+ *
+ * @return
+ *    Count register users
+ */
+function bf_conference_count_users() {
+  if (!bf_conference_check_invite_user()) {
+    return bf_core_count_members_forum() - bf_core_count_members_forum(TRUE);
+  }
+  else {
+    if (bf_conference_isfree_invate_place()) {
+      return bf_core_count_members_forum(TRUE);
+    }
+    else {
+      return bf_core_count_members_forum() - bf_core_count_members_forum(TRUE);
+    }
+  }
+}
+
+/**
+ * Function is free invite place for forum
+ *
+ * @return
+ *    TRUE if exists free invite place, otherwise FALSE.
+ */
+
+function bf_conference_isfree_invate_place() {
+  $count = bf_core_count_members_forum(TRUE);
+  if ($count < (variable_get('bf_count_members_all', 450) - variable_get('bf_count_members_form', 300))) {
+    return TRUE;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+ * Function get maxcount register users
+ * @return
+ *    Max count register users
+ */
+function bf_conference_maxcount_users() {
+  $countMax = variable_get('bf_count_members_form', 300);
+  if (module_exists('bf_invite')) {
+    if (bf_conference_check_invite_user()) {
+      $countMax = variable_get('bf_count_members_all', 450) - variable_get('bf_count_members_form', 300);
+      if (!bf_conference_isfree_invate_place()) {
+        $countMax = variable_get('bf_count_members_form', 300);
+      }
+    }
+  }
+  return $countMax;
+}
+
+/**
+ * Function check user is invite
+ *
+ * @return
+ *    TRUE if invite user, otherwise FALSE.
+ */
+function bf_conference_check_invite_user() {
+  if (isset($_COOKIE['br_ref']) && bf_invite_check_code($_COOKIE['br_ref'])) {
+    return TRUE;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+ * Function delete fields registration form
+ *
+ * @param $form
+ *   Object register form
+ *
+ * @param $fieldsDelete
+ *   List fields for delete
+ */
+function bf_register_form_delete_field(&$form, $fieldsDelete) {
+  foreach ($fieldsDelete as $field_name) {
+    unset($form[$field_name]);
+  }
+}
+
+/**
+ * Function hidden fields registration form
+ *
+ * @param $form
+ *   Object register form
+ *
+ * @param $fieldsHidden
+ *   List fields for hidden
+ */
+function bf_register_form_hidden_field(&$form, $fieldsHidden) {
+  foreach ($fieldsHidden as $key => $value) {
+    $all_fields_info = field_info_fields();
+    if (!isset($all_fields_info[$key]) && !in_array($key, array('mail', 'name'))) {
+      continue;
+    }
+    if (isset($form[$key]['und'][0]['value']['#type'])) {
+      $form[$key]['und'][0]['value']['#type'] = 'hidden';
+      $form[$key]['und'][0]['value']['#value'] = $value;
+    }
+    elseif (isset($form[$key]['und']['#type'])) {
+      $form[$key]['und']['#default_value'] = $value;
+      $form[$key]['und']['#type'] = 'hidden';
+    }
+    elseif (isset($form['account'][$key]['#type'])) {
+      $form['account'][$key]['#default_value'] = $value;
+      $form['account'][$key]['#type'] = 'hidden';
+    }
+
+  }
+}
+
+/**
+ * Function delete fill field registration form
+ */
+function bf_register_form_fill_field(&$form, $signup, $fieldsFill) {
+  foreach ($fieldsFill as $field_name => $field_type) {
+    $all_fields_info = field_info_fields();
+
+    if (!isset($all_fields_info[$field_name]) && !in_array($field_name, array('mail', 'name'))) {
+      continue;
+    }
+    if (is_array($signup) && isset($signup[$field_name])) {
+      if ($field_type == 'field') {
+        $form[$field_name]['und'][0]['value']['#default_value'] = $signup[$field_name]['und'][0]['value'];
+      }
+      elseif ($field_type == 'account') {
+        $form['account'][$field_name]['#default_value'] = $signup[$field_name];
+      }
+    }
+  }
+}
+
+/**
+ * Function create commitee table(3 step)
+ */
+function bf_register_form_render_table_commitees($commitees, $signup, $form) {
+  $render = array();
+  $time = array();
+  $time[0] = variable_get('bf_conference_date_time_with');
+  $time[1] = variable_get('bf_conference_date_time_by');
+  if (bf_conference_change_access()) {
+    $render['label'] = array(
+      '#type'       => 'container',
+      '#prefix'     => '<div class="line">',
+      '#attributes' => array('class' => array('label')),
+      'content'     => array(
+        '#markup' => "",
+      ),
+    );
+    $render['data'] = array(
+      '#type'       => 'container',
+      '#suffix'     => '</div>',
+      '#attributes' => array('class' => array('data', 'form-item')),
+      'content'     => array(
+        '#markup' => t("I want to participate in the kickoff workshop, held at the @conference, from @begintime to @endtime o’clock (@conferenceplace)",
+          array(
+            '@conference'      => variable_get('bf_conference_date_day'),
+            '@begintime'       => $time[0],
+            '@endtime'         => $time[1],
+            '@conferenceplace' => variable_get('bf_conference_place')
+          )),
+      ),
+    );
+  }
+  $checked = '';
+  foreach ($commitees as $key => $commitee) {
+    $description = $commitee->body_summary?$commitee->body_summary:$commitee->body_value;
+    $render['label_' . $key] = array(
+      '#type'       => 'container',
+      '#prefix'     => '<div class="line"><div class="">',
+      '#attributes' => array('class' => array('label')),
+      'content'     => array(
+        '#markup' => t("!div_begin$commitee->title!div_end",
+          array(
+            '!div_begin'=>'<div class="title">',
+            '!div_end'=>'</div>',
+          )).'<div class="description">'.$description.'</div>',
+      ),
+    );
+    $checked = is_array($signup) && isset($signup['commitee_first_request'])
+      && $signup['commitee_first_request'] == $commitee->nid ? 'checked' : '';
+    $invite = bf_conference_check_invite_user();
+    if ((($invite && bf_core_get_free_places_for_committee($commitee->nid, $invite) &&
+      bf_register_form_fillinvite_freebase_places($commitee->nid))
+      || bf_core_get_free_places_for_committee($commitee->nid)) &&
+      (bf_register_form_validate_field_sex($signup, TRUE, $commitee->nid) &&
+        bf_register_form_validate_extra_fields($form, $signup, TRUE, $commitee->nid))
+    ) {
+      $render['data_' . $key] = array(
+        '#type'         => 'radio',
+        '#value'        => array($commitee->nid),
+        '#return_value' => $key,
+        '#validated'    => TRUE,
+        '#attributes'   => array(
+          'class' => array('select_comitee'),
+        ),
+        '#suffix'       => '</div>',
+        '#name'         => 'commitee_first_request',
+      );
+      if ($checked) {
+        $render['data_' . $key]['#attributes']['checked'] = 'checked';
+      }
+    }
+    else {
+      $render['data_' . $key] = array(
+        '#type'       => 'container',
+        '#suffix'     => '</div>',
+        '#attributes' => array('class' => array('data form-item select_comitee')),
+        'content'     => array(
+          '#markup' => t("occupied!"),
+        ),
+      );
+    }
+  }
+  $render['label_last'] = array(
+    '#type'       => 'container',
+    '#prefix'     => '<div class="line online-discussion">',
+    '#attributes' => array('class' => array('label')),
+    'content'     => array(
+      '#markup' => t("I want to participate only in the online discussions"),
+    ),
+  );
+  $render['data_end'] = array(
+    '#type'          => 'radio',
+    '#value'         => array(0),
+    '#return_value'  => 0,
+    '#validated'     => TRUE,
+    '#default_value' => is_array($signup) && isset($signup['commitee_first_request']) ?
+      '' : 0,
+    '#attributes'    => array(
+      'class' => array('select_comitee'),
+    ),
+    '#suffix'        => '</div>',
+    '#name'          => 'commitee_first_request'
+  );
+  if ((is_array($signup) && isset($signup['commitee_first_request']) &&
+    $signup['commitee_first_request'] == 0)
+  ) {
+    $render['data_end']['#attributes']['checked'] = 'checked';
+  }
+  return $render;
+}
+
+/**
+ * Function render valid data
+ */
+function bf_register_form_render_valid_data($listData, $signup) {
+  $render = array();
+
+  foreach ($listData as $key => $value) {
+    $render['label_' . $key] = array(
+      '#type'       => 'container',
+      '#prefix'     => '<div class="container">',
+      '#attributes' => array('class' => array('label')),
+      'content'     => array(
+        '#markup' => t("$value[0]"),
+      ),
+    );
+    if ($value[1] == 'field') {
+      $renderData = isset($signup['field_' . $key]) ? t($signup['field_' . $key]['und'][0]['value']) : '';
+    }
+    elseif ($value[1] == 'extfield') {
+      $renderData = isset($signup['field_' . $key]['und']) ? t($signup['field_' . $key]['und'][0]['text']) :
+        t($signup['field_' . $key][0]['text']);
+    }
+    elseif ($value[1] == 'text') {
+      $renderData = t($value[2]);
+    }
+    else {
+      $renderData = isset($signup[$key]) ? t($signup[$key]) : '';
+    }
+    $render['data_' . $key] = array(
+      '#type'       => 'container',
+      '#suffix'     => '</div>',
+      '#attributes' => array('class' => array('data')),
+      'content'     => array(
+        '#markup' => $renderData,
+      ),
+    );
+  }
+  return $render;
+}
+
+/**
+ * Function check manager role user
+ *
+ * @return
+ *    TRUE if the user has role manager or admin, otherwise FALSE.
+ */
+function bf_register_form_manager_access() {
+  global $user;
+  $account = user_load($user->uid);
+  if (in_array('manager', $account->roles) || in_array('Manager', $account->roles) || in_array('Admin',
+    $account->roles)
+  ) {
+    return TRUE;
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+ * Function validate registration form
+ *
+ * @return
+ *    TRUE if valid form data, otherwise FALSE.
+ */
+function bf_register_form_validate($form, &$form_state) {
+  if (isset($form_state['values']['i_agree']) && empty($form_state['values']['i_agree'])) {
+    form_set_error('i_agree', t('You have to agree with the User Agreement'));
+    $setErrorJs = array(
+      'RegistrationError' => array(
+        'field' => 'i_agree',
+        'text'  => t('You have to agree with the User Agreement'),
+        'id'=>'edit-data-block'
+      )
+    );
+    drupal_add_js($setErrorJs, 'setting');
+    return FALSE;
+  }
+
+  if (!bf_conference_change_access() && (is_array($form_state['signup_object']) && isset($form_state['signup_object']['conference_change']) &&
+    $form_state['signup_object']['conference_change'] == 1)
+  ) {
+    $setErrorJs = array(
+      'RegistrationError' => array(
+        'field' => 'i_agree',
+        'text'  => t('Sorry, phase offline changed'),
+        'id'=>'edit-data-block'
+      )
+    );
+    drupal_add_js($setErrorJs, 'setting');
+    form_set_error('i_agree', t('Sorry, phase offline changed'));
+    $form_state['signup_object']['conference_change']=0;
+    return FALSE;
+  }
+
+  if (!bf_conference_isphase_preparation() && isset($form_state['values']['field_committee_finish'])) {
+    $setErrorJs = array(
+      'RegistrationError' => array(
+        'field' => 'i_agree',
+        'text'  => t('Sorry, phase offline changed'),
+        'id'=>'edit-data-block'
+      )
+    );
+    drupal_add_js($setErrorJs, 'setting');
+    form_set_error('i_agree', t('Sorry, phase offline changed'));
+    return FALSE;
+  }
+
+  if (!bf_conference_isphase_preparation() && !isset($form_state['values']['field_committee_finish'])) {
+    return TRUE;
+  }
+
+  if (bf_conference_change_access() && isset($form_state['signup_object']['conference_change']) &&
+    $form_state['signup_object']['conference_change'] == 1
+  ) {
+    $commitee = $form_state['values']['field_committee_finish'];
+    if (!$commitee) {
+      $commitee = NULL;
+    }
+    bf_register_form_validate_extra_fields($form, $form_state, FALSE, $commitee);
+    bf_register_form_validate_field_sex($form_state, FALSE, $commitee);
+  }
+
+  if (isset($form_state['values']['field_committee_finish']) && !is_null
+  ($form_state['values']['field_committee_finish']) && bf_core_get_free_places_for_committee
+  ($commitee)<1 && $form_state['signup_object']['commitee_first_request']) {
+    form_set_error('commitee_first_request', t('choose another committee'));
+    drupal_goto('user/register/interests');
+  }
+
+  if (!node_load($form_state['values']['field_committee']['und'][0]['target_id']) && $form_state['signup_object']['commitee_first_request']) {
+    form_set_error('commitee_first_request', t('choose another committee'));
+    drupal_goto('user/register/interests');
+  }
+
+  if (!bf_conference_change_access()) {
+    $form_state['values']['field_committee']['und'][0]['target_id']=NULL;
+  }
+  return TRUE;
+}
+
+
+/**
+ * Function validate field sex registration form
+ *
+ * @return
+ *    TRUE if valid field sex in register form, otherwise FALSE.
+ */
+function bf_register_form_validate_field_sex($form_state, $field = FALSE, $commitee_id = NULL,$fillinvite_freebase_places=false) {
+
+  if (!$field) {
+    $paramValue = isset($form_state['values']['field_sex']['und'][0]['value'])
+      ? $form_state['values']['field_sex']['und'][0]['value'] : $form_state['signup_object']['field_sex']['und'][0]['value'];
+
+    if (!bf_register_form_check_param($paramValue, 'field_sex', $paramValue, $commitee_id)) {
+      form_set_error('commitee_first_request', t('choose another committee'));
+      drupal_goto('user/register/interests');
+      return FALSE;
+    }
+    return TRUE;
+  }
+  else {
+    $paramValue = $form_state['field_sex']['und'][0]['value'];
+    if (!bf_register_form_check_param($paramValue, 'field_sex', $paramValue, $commitee_id,$fillinvite_freebase_places)) {
+      return FALSE;
+    }
+    return TRUE;
+  }
+}
+
+/**
+ * Function validate extra field registration form
+ *
+ * @return
+ *     TRUE if valid extra field in register form, otherwise FALSE.
+ */
+function bf_register_form_validate_extra_fields($form, $form_state, $field = FALSE, $commitee_id = NULL,$fillinvite_freebase_places=false) {
+
+  $groups = field_group_read_groups(array(
+    'name'      => 'user',
+    'bundle'    => 'user',
+    'view_mode' => 'full'
+  ));
+  $return = TRUE;
+  if (!$field) {
+    foreach ($groups['user']['user']['form']['group_extparam']->children as $extparam) {
+      $all_fields_info = field_info_fields();
+      if (!isset($all_fields_info[$extparam])) {
+        continue;
+      }
+      $paramValue = isset($form_state['values'][$extparam][0]['value'])
+        ? $form_state['values'][$extparam][0]['value'] : $form_state['signup_object'][$extparam][0]['value'];
+      $paramTitle = $form_state['field'][$extparam]['und']['field']['settings']['allowed_values'][$paramValue];
+      if (!bf_register_form_check_param($paramValue, $extparam, $paramTitle, $commitee_id)) {
+        form_set_error($extparam, t('@param most not register, make another selection', array('@param' => $paramTitle)));
+        $return = FALSE;
+      }
+    }
+    if (!$return) {
+      form_set_error('commitee_first_request', t('choose another committee'));
+      drupal_goto('user/register/interests');
+    }
+    return TRUE;
+  }
+  else {
+    foreach ($groups['user']['user']['form']['group_extparam']->children as $extparam) {
+      $all_fields_info = field_info_fields();
+      if (!isset($all_fields_info[$extparam])) {
+        continue;
+      }
+      $paramValue = $form_state[$extparam][0]['value'];
+      $paramTitle = $form[$extparam]['und']['#options'][$paramValue];
+      if ($paramTitle && !bf_register_form_check_param($paramValue, $extparam, $paramTitle, $commitee_id,$fillinvite_freebase_places)) {
+        $return = FALSE;
+      }
+    }
+    if (!$return) {
+      return FALSE;
+    }
+  }
+  return TRUE;
+}
+
+/**
+ * Function check param registration form
+ *
+ * @return
+ *     TRUE if select param has free place, otherwise FALSE.
+ */
+function bf_register_form_check_param($valueParam = NULL, $nameParam = 'field_sex', $titleParam = '',
+                                      $commitee_id = NULL, $returnData = FALSE, $fillinvite_freebase_places=false) {
+  $rules_comitee = variable_get('bf_rules_comitee_serialize') ?
+    unserialize(variable_get('bf_rules_comitee_serialize')) : array();
+  $countMembers = bf_core_count_members_with_a_criteria_commitee($nameParam, $valueParam, 'Participant',
+    $commitee_id);
+  $countMembersAdditional = bf_core_count_members_with_a_criteria_commitee($nameParam, $valueParam, 'Participant',
+    $commitee_id, TRUE);
+  $places_for_committe = bf_core_places_for_committee();
+  $countAllComitee = $places_for_committe['members_form'];
+  if (module_exists('bf_invite')) {
+    if ((bf_conference_check_invite_user() && is_null($commitee_id)) ||
+      (bf_conference_check_invite_user() && bf_register_form_fillinvite_freebase_places($commitee_id,$nameParam,
+        $valueParam,$titleParam))) {
+      $countAllComitee = $places_for_committe['members_all'] - $places_for_committe['members_form'];
+      $countMembers = $countMembersAdditional;
+    } elseif (bf_conference_check_invite_user() && $fillinvite_freebase_places) {
+      return bf_register_form_fillinvite_freebase_places($commitee_id,$nameParam,
+        $valueParam,$titleParam);
+    }
+  }
+  if (!isset($rules_comitee[$nameParam][$titleParam])) {
+    $procent = 100;
+  } else {
+    $procent = $rules_comitee[$nameParam][$titleParam];
+  }
+
+  //debug
+  $checkData = array(
+    'param_name'             => $nameParam,
+    'param_value'            => $valueParam,
+    'occupied_place'         => $countMembers,
+    'commitee_id'            => $commitee_id,
+    'all_place'              => ceil($countAllComitee * $procent / 100),
+    'addition_place'         => '',
+    'addition_place_occuped' => $countMembersAdditional,
+    'procent'                => $procent,
+    'without_rounding'       => $countAllComitee * $procent / 100,
+    'return'                 => $countMembers . '<' . ceil($countAllComitee * $procent / 100) . ' ?'
+  );
+  if ($returnData) {
+    return $checkData;
+  }
+
+  if ($countMembers >= (ceil($countAllComitee * $procent / 100))) {
+    return FALSE;
+  }
+  return TRUE;
+}
+
+/**
+ * Function check if fill invite places, but free base place
+ *
+ * @return
+ *    TRUE if registration has free invite place, otherwise FALSE.
+ */
+function bf_register_form_fillinvite_freebase_places($committee_target_id,$nameParam='', $valueParam='',$titleParam='') {
+  $places_for_committe = bf_core_places_for_committee();
+  $countAllComitee = $places_for_committe['members_all'] - $places_for_committe['members_form'];
+  if ($nameParam && $valueParam) {
+    $rules_comitee = variable_get('bf_rules_comitee_serialize') ?
+      unserialize(variable_get('bf_rules_comitee_serialize')) : array();
+    $places_for_committe = bf_core_places_for_committee();
+    $countMembersAdditional = bf_core_count_members_with_a_criteria_commitee($nameParam, $valueParam, 'Participant',
+      $committee_target_id, TRUE);
+    if ($countMembersAdditional<ceil($countAllComitee * $rules_comitee[$nameParam][$titleParam] / 100)) {
+      $paramCheck=true;
+    } else {
+      $paramCheck=false;
+    }
+  } else {
+    $reservedPlace = bf_core_count_members_for_comitee($committee_target_id,'Participant',true);
+    if ($reservedPlace<0) $reservedPlace=0;
+    if ($reservedPlace<$countAllComitee) {
+      $paramCheck=true;
+    } else {
+      $paramCheck=false;
+    }
+  }
+
+  if (bf_conference_check_invite_user() && !($places_for_committe['members_all'] -
+    $places_for_committe['members_form'] - bf_core_count_members_for_comitee($committee_target_id,true))) {
+    return FALSE;
+  } elseif (!$paramCheck) {
+    return FALSE;
+  } else {
+    return TRUE;
+  }
+}
+
+/**
+ * Function submit step2 registration form
+ */
+function bf_register_form_submit_edit_commitee($form, &$form_state) {
+  if (!isset($form_state['input']['commitee_first_request'])) {
+    form_set_error('commitee_first_request', t('choose another committee'));
+    drupal_goto('user/register/interests');
+  }
+  $form_state['values']['commitee_first_request'] = $form_state['input']['commitee_first_request'];
+}
+
+/**
+ * Function submit registration form
+ * create user
+ * add role user
+ * send mail
+ */
+function bf_register_form_submit($form, &$form_state) {
+
+  if (bf_conference_change_access() && (is_array($form_state['signup_object']) && isset
+  ($form_state['signup_object']['conference_change']) &&
+    $form_state['signup_object']['conference_change'] == 1)
+  ) {
+    // role participant
+    $form_state['values']['roles'][user_role_load_by_name('Participant')->rid] = TRUE;
+  }
+
+  //set invite field user
+  if (bf_conference_check_invite_user()) {
+    if (bf_conference_isfree_invate_place() && bf_register_form_fillinvite_freebase_places($form_state['values']['field_committee_finish'])
+      && bf_register_form_validate_field_sex($form_state['signup_object'], TRUE,
+        $form_state['values']['field_committee_finish'], TRUE) &&
+      bf_register_form_validate_extra_fields($form, $form_state['signup_object'], TRUE,
+        $form_state['values']['field_committee_finish'],TRUE)) {
+      $form_state['values']['field_invite[und]'] = 1;
+      $form_state['values']['field_invite'] = array(
+        'und' => array(
+          0 => array(
+            'value' => 1
+          )
+        )
+      );
+    }
+
+    //remove invite data(disabled)
+    //bf_invite_remove_code($_COOKIE['br_ref']);
+
+      if (bf_invite_check_duplicate_email($form_state['values']['mail'])) {
+          $form_state['values']['roles'][user_role_load_by_name('Participant')->rid] = FALSE;
+      }
+
+    unset($_COOKIE['br_ref']);
+    setcookie('br_ref', '', time() - 3600);
+  }
+
+  $groups = field_group_read_groups(array(
+    'name'      => 'user',
+    'bundle'    => 'user',
+    'view_mode' => 'full'
+  ));
+  //save extra fields
+  foreach ($groups['user']['user']['form']['group_extparam']->children as $extparam) {
+    $all_fields_info = field_info_fields();
+    if (!isset($all_fields_info[$extparam])) {
+      continue;
+    }
+    if (isset($form_state['values'][$extparam]['und'][0]) && (!is_numeric
+    ($form_state['values'][$extparam]['und'][0]['value']) || is_null($form_state['values'][$extparam]['und'][0]['value']))
+    ) {
+      $form_state['values'][$extparam]['und'][0]['value'] = $form_state['input'][$extparam];
+    }
+  }
+  //save interest commitees
+  if (isset($form_state['values']['field_field_of_interest[und][0][target_id]']) && bf_conference_change_access()) {
+    $form_state['values']['field_field_of_interest'] = array(
+      'und' => array(
+        0 => array(
+          'target_id' => $form_state['values']['field_field_of_interest[und][0][target_id]']
+        ),
+        1 => array(
+          'target_id' => isset($form_state['values']['field_field_of_interest[und][1][target_id]']) ?
+            $form_state['values']['field_field_of_interest[und][1][target_id]'] : NULL
+        )
+      )
+    );
+  }
+  unset($_SESSION['messages']);
+  $account = $form_state['user'];
+  $params['account'] = $account;
+  //send mails
+  $mail = drupal_mail('user_registrationpassword', 'register', $account->mail, user_preferred_language($account), $params);
+  drupal_set_message(t('!begin_containerThank you for registering. Your account has been created and a verification email has been sent to your registered email address @email. Please click on the verification link included in the email to activate your account. Your account will not be activated until you verify your email address.!end_container',
+    array('@email' => $form_state['values']['mail'],
+    '!begin_container'=>'<span class="registration-success-message">',
+    '!end_container'=>'</span>')
+  ));
+  //clear ctools cache
+  bf_register_form_clear_page_cache('signup');
+}
+
+function bf_register_form_new_submit($form, &$form_state) {
+  $groups = field_group_read_groups(array(
+    'name'      => 'user',
+    'bundle'    => 'user',
+    'view_mode' => 'full'
+  ));
+  //save extra field.
+  foreach ($groups['user']['user']['form']['group_extparam']->children as $extparam) {
+    $all_fields_info = field_info_fields();
+    if (!isset($all_fields_info[$extparam])) {
+      continue;
+    }
+    if (isset($form_state['values'][$extparam][0]['value'])) {
+      $form_state['values'][$extparam]['und'][0]['value'] = $form_state['values'][$extparam][0]['value'];
+    }
+  }
+}
+
+/**
+ * Function deletes duplicates extra fields
+ */
+function bf_register_form_delete_dublicate_extrafiedls(&$form) {
+  $groups = field_group_read_groups(array(
+    'name'      => 'user',
+    'bundle'    => 'user',
+    'view_mode' => 'full'
+  ));
+  foreach ($groups['user']['user']['form']['group_extparam']->children as $extparam) {
+    $all_fields_info = field_info_fields();
+    if (!isset($all_fields_info[$extparam])) {
+      continue;
+    }
+    if (isset($form[$extparam])) {
+      unset($form[$extparam]);
+    }
+  }
+}
+
+/**
+ * Function check correct exist data in fields form
+ *
+ * @return
+ *    Data if exist field data, otherwise NULL
+ */
+function correctGetData($fieldData) {
+  if (isset($fieldData['und'][0])) {
+    return $fieldData['und'][0]['value'];
+  }
+  elseif ($fieldData['und']['value']) {
+    return $fieldData['und']['value'];
+  }
+  else {
+    return NULL;
+  }
+
+}
+
+/**
+ * Implements hook_cron().
+ *
+ * Flash all caches.
+ */
+function bf_register_form_cron() {
+  drupal_flush_all_caches();
+  drupal_set_message('cache flushed.');
+}

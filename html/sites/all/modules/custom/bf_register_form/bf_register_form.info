@@ -1,0 +1,9 @@
+; $Id$
+name = BF register form
+description = Multistep forms ctools module
+core = 7.x
+package = BF
+version = 7.x-1.0
+
+dependencies[] = ctools
+dependencies[] = panels

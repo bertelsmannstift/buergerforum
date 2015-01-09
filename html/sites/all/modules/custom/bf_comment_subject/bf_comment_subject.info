@@ -1,0 +1,7 @@
+name = BF comment subject
+description = Change max size for comment subject size.
+core = 7.x
+package = BF
+version = 7.x-1.0
+
+dependencies[] = comment

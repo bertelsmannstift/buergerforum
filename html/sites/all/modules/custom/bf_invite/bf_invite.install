@@ -1,0 +1,67 @@
+<?php 
+
+/**
+ * @file
+ * Sets up the base table for our entity and a table to store information about
+ * the entity types.
+ */
+
+
+/**
+ * Implements hook_schema().
+ */
+function bf_invite_schema() {
+  $schema = array();
+
+  $schema['bf_invite'] = array(
+      'description' => 'The base table for invites.',
+      'fields' => array(
+          'iid' => array(
+              'description' => 'Primary Key: Identifier for a bf_invite.',
+              'type' => 'serial',
+              'unsigned' => TRUE,
+              'not null' => TRUE,
+          ),
+          'email' => array(
+              'description' => 'CRC',
+              'type' => 'varchar',
+              'length' => 256,
+              'not null' => TRUE,
+              'default' => '',
+          ),
+          'code' => array(
+              'description' => 'CRC',
+              'type' => 'varchar',
+              'length' => 32,
+              'not null' => TRUE,
+              'default' => '',
+          ),          
+          'status' => array(
+              'description' => 'Status.',
+              'type' => 'int',
+              'not null' => TRUE,
+              'default' => 0,
+          ),
+      ),
+      'primary key' => array('iid'),
+      'indexes' => array(
+          'status' => array('status'),
+          'email' => array('email'),
+          'code' => array('code'),
+      ),
+  );
+  return $schema;
+}
+
+/**
+ * Add newcol field to bf_invite table.
+ */
+function bf_invite_update_1() {
+  $spec = array(
+    'type' => 'varchar',
+    'description' => "Date send invite",
+    'length' => 20,
+    'not null' => FALSE,
+    );
+    db_add_field( 'bf_invite', 'date_send', $spec);
+}

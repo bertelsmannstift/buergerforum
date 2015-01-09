@@ -1,0 +1,16 @@
+Index: sites/all/modules/contrib/diffadvance/diff_advance.module
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/diffadvance/diff_advance.module	(revision db3a02a5cac5c3e99865afa082bc878a9a5fb470)
++++ sites/all/modules/contrib/diffadvance/diff_advance.module	(revision )
+@@ -43,7 +43,7 @@
+   $output = l('View diff in two columns version', 'node/'. $node->nid . '/revisions/view/' . $old_vid . '/' . $new_vid . '/tableview');
+   if (arg(6) == 'tableview') {
+     $output = l('View diff in inline diff version', 'node/'. $node->nid . '/revisions/view/' . $old_vid . '/' . $new_vid . '/inlinediff');
+-    return $output . diff_diffs_show($node, $old_vid, $new_vid);
++    return $output . render(diff_diffs_show($node, $old_vid, $new_vid));
+   }
+   else {
+     if (arg(6) == '') {

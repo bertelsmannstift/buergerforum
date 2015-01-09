@@ -1,0 +1,17 @@
+name = BF CKEditor
+description = ckeditor feature
+core = 7.x
+package = BF Features
+version = 7.x-0.8
+project = bf_ckeditor
+dependencies[] = ckeditor
+dependencies[] = features
+dependencies[] = filter
+dependencies[] = php
+features[ckeditor_profile][] = Advanced
+features[ckeditor_profile][] = CKEditor Global Profile
+features[ckeditor_profile][] = Full
+features[features_api][] = api:2
+features[filter][] = full_html
+features[filter][] = php_code
+features[filter][] = plain_text

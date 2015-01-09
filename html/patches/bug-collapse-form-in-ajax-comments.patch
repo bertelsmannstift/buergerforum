@@ -1,0 +1,16 @@
+Index: sites/all/modules/contrib/ajax_comments/ajax_comments.module
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/ajax_comments/ajax_comments.module	(revision 99e8c910f68d06fb8268b25a897f9515c93bbc8d)
++++ sites/all/modules/contrib/ajax_comments/ajax_comments.module	(revision )
+@@ -528,7 +528,7 @@
+   $commands[] = ajax_command_css('.add-comment-btn', array('display' => 'inline'));
+   $commands[] = ajax_command_css('#reply-' . $pid, array('display' => 'none'));
+   if ($pid) {
+-    $commands[] = ajax_command_after('#comment-wrapper-' . $pid . '>.comment', $form);
++    $commands[] = ajax_command_append('#comment-wrapper-' . $pid . ' .fieldset-comment-wrapper', $form);
+   }
+   else {
+     $commands[] = ajax_command_append('#comment-wrapper-nid-' . $node->nid, $form);

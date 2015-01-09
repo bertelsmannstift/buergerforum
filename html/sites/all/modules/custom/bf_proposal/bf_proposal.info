@@ -1,0 +1,9 @@
+; $Id$
+name = BF proposal
+description = Plugins and customization for Proposal Content type
+core = 7.x
+package = BF
+version = 7.x-1.0
+
+dependencies[] = ctools
+dependencies[] = panels

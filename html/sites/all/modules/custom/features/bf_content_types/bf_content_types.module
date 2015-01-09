@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the BF Content types feature.
+ */
+
+include_once 'bf_content_types.features.inc';

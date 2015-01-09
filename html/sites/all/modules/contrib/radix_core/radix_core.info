@@ -1,0 +1,13 @@
+name = Radix Core
+description = Brings all the Radix components (theme and modules) together
+core = 7.x
+
+dependencies[] = radix_admin
+dependencies[] = radix_layouts
+
+; Information added by drupal.org packaging script on 2013-10-01
+version = "7.x-1.x-dev"
+core = "7.x"
+project = "radix_core"
+datestamp = "1380624791"
+

@@ -1,0 +1,41 @@
+Index: sites/all/modules/contrib/ajax_comments/ajax_comments.js
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/ajax_comments/ajax_comments.js	(revision 5bca6fb3bea2386b0fe51851f91852e08217e998)
++++ sites/all/modules/contrib/ajax_comments/ajax_comments.js	(revision )
+@@ -23,6 +23,7 @@
+     // Hide comment form if cancel is clicked.
+     $("a.ajax-comments-reply-cancel").click(function(e) {
+       commentForm = $(this).attr("href");
++      commentCancel = $(this);
+       // Hide comment form.
+       $(commentForm).hide();
+       //ajaxCommentsScrollReply(commentNumber[1])
+@@ -37,8 +38,8 @@
+         click: function(e) {
+           commentNumber = $(this).attr("id").split('-');
+           // Reshow the form.
+-          $('[about="/comment/' + commentNumber[1] + '#comment-' + commentNumber[1] + '"]').next().show();
+-
++          //$('[about="/comment/' + commentNumber[1] + '#comment-' + commentNumber[1] + '"]').next().show();
++          commentCancel.parents('form#comment-form').show();
+           // Don't let people reply over and over.
+           $(this).hide();
+ 
+Index: sites/all/modules/contrib/ajax_comments/ajax_comments.module
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/ajax_comments/ajax_comments.module	(revision 5bca6fb3bea2386b0fe51851f91852e08217e998)
++++ sites/all/modules/contrib/ajax_comments/ajax_comments.module	(revision )
+@@ -526,6 +526,7 @@
+   // Add the new form.
+   $commands[] = ajax_command_replace('.pane-add-comment-link .comment-form', '');
+   $commands[] = ajax_command_css('.add-comment-btn', array('display' => 'inline'));
++  $commands[] = ajax_command_css('#reply-' . $pid, array('display' => 'none'));
+   if ($pid) {
+     $commands[] = ajax_command_after('#comment-wrapper-' . $pid . '>.comment', $form);
+   }

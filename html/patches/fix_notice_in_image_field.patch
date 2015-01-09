@@ -1,0 +1,21 @@
+Index: modules/image/image.field.inc
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- modules/image/image.field.inc	(revision 9b7b2f171dec907b249edd3b368f5febb6c2c7b6)
++++ modules/image/image.field.inc	(revision )
+@@ -598,9 +598,10 @@
+  */
+ function theme_image_formatter($variables) {
+   $item = $variables['item'];
+-  $image = array(
+-    'path' => $item['uri'],
+-  );
++  $image = array();
++  if (isset($item['uri'])) {
++    $image['path'] = $item['uri'];
++  }
+ 
+   if (array_key_exists('alt', $item)) {
+     $image['alt'] = $item['alt'];

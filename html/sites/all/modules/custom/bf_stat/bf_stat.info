@@ -1,0 +1,6 @@
+; $Id$
+name = BF Stat
+description = Module for advanced statistics
+core = 7.x
+package = BF
+version = 7.x-1.0

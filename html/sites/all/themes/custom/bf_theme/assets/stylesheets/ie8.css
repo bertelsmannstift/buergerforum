@@ -1,0 +1,35 @@
+/* Slider */
+
+.pane-views-bf-owlcarousel-block {
+margin-top:33px;
+height:250px;
+}
+
+.owl-carousel .owl-wrapper-outer,
+.owl-carousel .owl-item {
+height:300px;
+}
+
+.views-field-title-description {
+position:static!important;
+bottom:10%;
+background: rgba(255,255,255,0.9);
+width:400px;
+height:100px;
+overflow:hidden;
+padding:10px;
+font-size:16px;
+max-height:300px;
+margin-top:-150px;
+margin-left:40px;
+}
+
+.views-field-title-description > div {
+background: rgba(255,255,255,0.9);
+filter:progid:DXImageTransform.Microsoft.gradient(startColorstr=#eeffffff,endColorstr=#eeffffff);
+position: relative;
+width:400px;
+height:100px;
+overflow:hidden;
+padding:10px;
+}

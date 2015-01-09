@@ -1,0 +1,104 @@
+@font: Arial;
+#block-panels-mini-bf-footerpanel {
+  display: block;
+  #mini-panel-bf_footerpanel {
+    &>div {
+      display: block;
+      &:before {
+        clear: both;
+      }
+    }
+  }
+  .menu {
+    li {
+      float: left;
+      margin: 0 10px;
+    }
+  }
+  .contextual-links-region {
+    display: block;
+  }
+  .language-switcher-locale-url, .language-switcher-locale-session {
+    li {
+      float: left;
+      margin: 0 10px;
+    }
+  }
+}
+
+.label, .badge {
+  background-color: none;
+}
+.container-header{
+  .navbar .container {
+    width: auto;
+  }
+  &:before {
+    display: table;
+    content: "";
+    line-height: 0;
+  }
+}
+#main #content {
+  .view-bf-main-page {
+    &.last-news {
+      .view-content {
+        .views-row {
+          width: 33%;
+          float: left;
+          .views-field {
+            margin: 0 20px;
+          }
+        }
+      }
+    }
+  }
+  .tasks {
+    .views-row {
+      clear:both;
+      .views-field-field-time {
+        float: left;
+        width:9%;
+      }
+      .views-field-field-title-body-link {
+        float: left;
+        width:70%;
+      }
+      .views-field-field-date {
+        float: left;
+        width:9%;
+      }
+      &:before {
+        clear:both;
+      }
+    }
+  }
+  .contextual-links-region {
+    display: block;
+    margin: 0 auto;
+  }
+}
+
+div.messages.error {
+  color: #FF0000;
+  background-color: #FFD9D9;
+}
+
+div.messages.error {
+  color: #b94a48;
+  background-color: #f2dede;
+  border-color: #eed3d7;
+}
+
+div.messages {
+  padding: 8px 35px 8px 14px;
+  margin: 0 0 18px;
+  color: #c09853;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.5);
+  background-color: #fcf8e3;
+  background-image: none;
+  border: 1px solid #fbeed5;
+  -webkit-border-radius: 4px;
+  -moz-border-radius: 4px;
+  border-radius: 4px;
+}

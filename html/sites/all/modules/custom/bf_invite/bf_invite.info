@@ -1,0 +1,6 @@
+; $Id$
+name = BF invite
+description = Module for registration invites
+core = 7.x
+package = BF
+version = 7.x-1.0

@@ -1,0 +1,526 @@
+<?php
+
+/**
+ * Implements hook_menu()
+ */
+function bf_pief_menu() {
+  $items = array();
+
+  $items['ajax/pief-field/edit/%/%/%'] = array(
+    'access arguments'  => array('use inline editor'),
+    'page callback'     => 'bf_pief_field_edit_page',
+    'delivery callback' => 'ajax_deliver',
+    'page arguments'    => array(3, 4, 5),
+  );
+
+  $items['ajax/pief-field/%'] = array(
+    'page callback'     => 'bf_pief_submit_ajax',
+    'page arguments'    => array(2),
+    'access callback'   => TRUE,
+    'type'              => MENU_CALLBACK,
+    'delivery callback' => 'ajax_deliver',
+  );
+
+  return $items;
+}
+
+/**
+ * Field edit form ajax callback.
+ */
+function bf_pief_field_edit_page($entity_type, $entity_id, $field_name, $langcode = NULL) {
+  if (empty($entity_type)) {
+    return MENU_NOT_FOUND;
+  }
+
+  $entity_info = entity_get_info($entity_type);
+  if (!$entity_info) {
+    return MENU_NOT_FOUND;
+  }
+
+  $entities = entity_load($entity_type, array($entity_id));
+  if (!$entities) {
+    return MENU_NOT_FOUND;
+  }
+
+  $entity = reset($entities);
+  if (!$entity) {
+    return MENU_NOT_FOUND;
+  }
+
+  if (!isset($langcode) && isset($entity->language)) {
+    $langcode = $entity->language;
+  }
+
+  list($id, $vid, $bundle) = entity_extract_ids($entity_type, $entity);
+
+  if ($entity_type == 'node' && $field_name == 'title') {
+    $field_instance = TRUE;
+    $subform_id     = 'bf_pief_field_edit_node_title_form';
+    if (!bf_pief_check_access($entity_id)) {
+      return MENU_ACCESS_DENIED;
+    }
+  }
+  else {
+    $field_instance = field_info_instance($entity_type, $field_name, $bundle);
+    $subform_id     = 'bf_pief_field_edit_field_form';
+  }
+
+  if (empty($field_instance)) {
+    return MENU_NOT_FOUND;
+  }
+
+  $form_state = array(
+    'entity_type'    => $entity_type,
+    'entity'         => $entity,
+    'field_name'     => $field_name,
+    'langcode'       => $langcode,
+    'no_redirect'    => TRUE,
+    'redirect'       => $_GET['q'],
+    'field_instance' => $field_instance,
+    'bundle'         => $bundle,
+    'subform_id'     => $subform_id,
+  );
+
+  $output = drupal_build_form('bf_pief_field_edit_form', $form_state);
+  if (!empty($form_state['executed'])) {
+    entity_save($entity_type, $form_state['entity']);
+    drupal_goto($form_state['redirect']);
+  }
+
+  $rendered_form = drupal_render($output);
+
+  $field_name = str_replace('_', '-', $field_name);
+  $commands[] = ajax_command_css("#pief-$entity_id-$field_name .pief-field-output", array('display' => 'none'));
+  $commands[] = ajax_command_html("#pief-$entity_id-$field_name .pief-field-editor", $rendered_form);
+
+  // Hide edit links.
+  $commands[] = ajax_command_css(".pief-field-toolbar", array('display' => 'none'));
+
+
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+/**
+ * Alter pief form.
+ */
+function bf_pief_form_bf_pief_field_edit_form_alter(&$form, &$form_state) {
+  $nid = $form_state['entity']->nid;
+  $node = node_load($nid);
+  global $user;
+  $is_editor = FALSE;
+  $editors = field_get_items('node', $node, 'field_editors');
+  if (!empty($editors)) {
+    foreach ($editors as $editor) {
+      if ($editor['target_id'] == $user->uid) {
+        $is_editor = TRUE;
+      }
+    }
+  }
+  if ($is_editor) {
+    $form['#attributes'] = array('class' => array('proposal-editor'), 'rel' => array('proposal-editor'));
+  }
+  $form['actions']['submit']['#ajax'] = array(
+    'path' => 'ajax/pief-field/submit',
+  );
+
+  $form['actions']['cancel']['#ajax'] = array(
+    'path' => 'ajax/pief-field/cancel',
+  );
+}
+
+/**
+ * Ajax submit callback.
+ */
+function bf_pief_submit_ajax($op) {
+  $commands = array();
+
+  list($form, $form_state) = ajax_get_form();
+  $entity_id  = $form_state['entity']->nid;
+  $field_name = str_replace('_', '-', $form_state['field_name']);
+
+  switch ($op) {
+    case 'submit':
+      drupal_process_form($form['#form_id'], $form, $form_state);
+      entity_save('node', $form_state['entity']);
+
+      // Reload page.
+      $reload     = '<script>window.location.href="' . url('node/' . $entity_id) . '";</script>';
+      $commands[] = ajax_command_html("#pief-$entity_id-$field_name .pief-field-editor", $reload);
+
+      // Show original content.
+      $commands[] = ajax_command_css("#pief-$entity_id-$field_name .pief-field-output", array('display' => 'block'));
+      break;
+
+    case 'cancel':
+      // Hide editor.
+      $commands[] = ajax_command_html("#pief-$entity_id-$field_name .pief-field-editor", '');
+
+      // Show original content.
+      $commands[] = ajax_command_css("#pief-$entity_id-$field_name .pief-field-output", array('display' => 'block'));
+
+      // Show edit links.
+      $commands[] = ajax_command_css(".pief-field-toolbar", array('display' => 'block'));
+      break;
+  }
+
+
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+/**
+ * Implements hook_init().
+ */
+function bf_pief_init() {
+  drupal_add_library('system', 'drupal.ajax');
+}
+
+/**
+ * Implements hook_permission().
+ */
+function bf_pief_permission() {
+  $perms                      = array();
+  $perms['use inline editor'] = array(
+    'title' => 'Use inline field editor',
+  );
+
+  return $perms;
+}
+
+/**
+ * Implement hook_panels_pane_content_alter().
+ */
+function bf_pief_panels_pane_content_alter($content, $pane, $args, $context) {
+  if (isset($content->content['#field_name'])) {
+    if ($content->content['#field_name'] == 'field_intro') {
+      $content->content[0]['#markup'] = nl2br($content->content[0]['#markup']);
+    }
+  }
+
+  if (!empty($content->delta) && bf_pief_check_access($content->delta)) {
+    $content->style = '';
+    if (empty($content->content)) {
+      $content->content = '<span class="pief_field_empty">'.t('Empty').'</span>';
+      $content->style = str_replace('_', '-', ' pief-field-empty-'.$content->type);
+    }
+
+    if (!in_array($pane->type, array('entity_field', 'node_title', 'node_body'))) {
+      return;
+    }
+
+    $plugin       = ctools_get_content_type($pane->type);
+    $pane_context = ctools_content_select_context($plugin, $pane->subtype, $pane->configuration, $context);
+
+    switch ($pane->type) {
+      case 'entity_field':
+        list($entity_type, $field_name) = explode(':', $pane->subtype);
+        list($nid, $vid, $bundle) = entity_extract_ids($entity_type, $pane_context->data);
+
+        break;
+
+      case 'node_title':
+        $nid        = $pane_context->data->nid;
+        $field_name = 'title';
+
+        break;
+
+      case 'node_body':
+        $nid        = $pane_context->data->nid;
+        $field_name = 'body';
+
+        break;
+    }
+
+    $content->pief_edit_link = l(
+      t('Edit'),
+      "ajax/pief-field/edit/node/$nid/$field_name",
+      array(
+        'attributes' => array(
+          'class' => array('pief-edit-link pief-edit-link-'.$field_name, 'use-ajax'),
+          'id'    => str_replace('_', '-', "pief-edit-$nid-$field_name")
+        )
+      )
+    );
+
+    $content->pief_id = str_replace('_', '-', "pief-$nid-$field_name");
+  } else {
+    if (isset($pane->style['style']) && $pane->style['style'] == 'bf_pief') {
+      unset($pane->style['style']);
+    }
+    return;
+  }
+
+}
+
+/**
+ * Implementation of hook_access().
+ */
+function bf_pief_check_access($nid = NULL) {
+  global $user;
+  $node = node_load($nid);
+  if (empty($node)) {
+    return FALSE;
+  }
+
+  if ($node->type == 'proposal') {
+    $is_editor = FALSE;
+    $editors = field_get_items('node', $node, 'field_editors');
+    if (!empty($editors)) {
+      foreach ($editors as $editor) {
+        if ($editor['target_id'] == $user->uid) {
+          $is_editor = TRUE;
+        }
+      }
+    }
+    // get phase name.
+    $query = db_select('taxonomy_term_data', 't');
+    $phase = $query
+      ->fields('t', array('name'))
+      ->condition('t.tid', $node->field_phase[LANGUAGE_NONE][0]['tid'])
+      ->execute()->fetchField();
+
+    if (in_array('Admin', $user->roles) || in_array('Manager', $user->roles)) {
+      return TRUE;
+    } else {
+      if (!$is_editor) {
+        return FALSE;
+      } else {
+        if ($phase != 'Voting' && $phase != 'Result') {
+          return TRUE;
+        } else {
+          return FALSE;
+        }
+      }
+    }
+  } else {
+    return FALSE;
+  }
+}
+
+/**
+ * Implementation of hook_ctools_plugin_directory().
+ */
+function bf_pief_ctools_plugin_directory($module, $plugin) {
+  if ($module == 'page_manager' || $module == 'panels') {
+    return 'plugins/' . $plugin;
+  }
+}
+
+/**
+ * Field editing form.
+ */
+function bf_pief_field_edit_form($form, &$form_state) {
+  $form_state['subform_id']($form, $form_state);
+  $form['#parents'] = array();
+
+  $entity_type = $form_state['entity_type'];
+  $entity      = $form_state['entity'];
+  $bundle      = $form_state['bundle'];
+
+  list($use_revisions, $control_revisions) = _bf_pief_entity_allows_revisions($entity_type, $bundle, $entity);
+
+  if ($use_revisions) {
+    $form_state['use revisions']  = TRUE;
+    $form['revision_information'] = array(
+      '#weight' => 11,
+    );
+
+    $form['revision_information']['revision'] = array(
+      '#type'          => 'checkbox',
+      '#title'         => t('Create new revision'),
+      '#default_value' => $entity->revision,
+      '#id'            => 'edit-revision',
+      '#access'        => $control_revisions,
+    );
+
+    if ($control_revisions || $entity->revision) {
+      $form['revision_information']['log'] = array(
+        '#type'          => 'textarea',
+        '#title'         => t('Log message'),
+        '#description'   => t(
+          'Provide an explanation of the changes you are making. This will help other authors understand your motivations.'
+        ),
+        '#default_value' => $entity->log,
+      );
+
+      if ($control_revisions) {
+        $form['revision_information']['log']['#dependency'] = array('edit-revision' => array(1));
+      }
+    }
+  }
+
+  $form['actions']           = array('#type' => 'actions');
+  $form['actions']['submit'] = array(
+    '#type'  => 'submit',
+    '#value' => t('Save')
+  );
+  $form['actions']['cancel'] = array(
+    '#type'                     => 'submit',
+    '#value'                    => t('Cancel'),
+    '#validate'                 => array('bf_pief_field_edit_form_cancel'),
+    '#executes_submit_callback' => FALSE,
+  );
+
+  $form['#submit'][] = 'bf_pief_field_edit_form_submit';
+
+  return $form;
+}
+
+/**
+ * Subform to edit a field instance.
+ */
+function bf_pief_field_edit_field_form(&$form, &$form_state) {
+  $form['#parents'] = array();
+
+  $entity_type    = $form_state['entity_type'];
+  $entity         = $form_state['entity'];
+  $field_instance = $form_state['field_instance'];
+  $langcode       = $form_state['langcode'];
+  $bundle         = $form_state['bundle'];
+
+  ctools_include('fields');
+
+  $options = array(
+    'language' => field_valid_language($langcode),
+    'default'  => TRUE,
+  );
+
+  $form += (array) ctools_field_invoke_field(
+    $field_instance,
+    'form',
+    $entity_type,
+    $entity,
+    $form,
+    $form_state,
+    $options
+  );
+
+  $form['#pre_render'][] = '_field_extra_fields_pre_render';
+  $form['#entity_type']  = $entity_type;
+  $form['#bundle']       = $bundle;
+
+  foreach (module_implements('field_attach_form') as $module) {
+    $function = $module . '_field_attach_form';
+    $function($entity_type, $entity, $form, $form_state, $langcode);
+  }
+
+  $form['#validate'][] = 'bf_pief_field_edit_field_form_validate';
+  $form['#submit'][]   = 'bf_pief_field_edit_field_form_submit';
+}
+
+/**
+ * Validate field editing form
+ */
+function bf_pief_field_edit_field_form_validate($form, &$form_state) {
+  ctools_include('fields');
+
+  $entity_type    = $form_state['entity_type'];
+  $entity         = $form_state['entity'];
+  $field_name     = $form_state['field_name'];
+  $field_instance = $form_state['field_instance'];
+
+  ctools_field_invoke_field_default($field_instance, 'extract_form_values', $entity_type, $entity, $form, $form_state);
+
+  $errors = array();
+
+  ctools_field_invoke_field_default($field_instance, 'validate', $entity_type, $entity, $errors);
+  ctools_field_invoke_field($field_instance, 'validate', $entity_type, $entity, $errors);
+
+  foreach (module_implements('field_attach_validate') as $module) {
+    $function = $module . '_field_attach_validate';
+    $function($entity_type, $entity, $errors);
+  }
+
+  if ($errors) {
+    foreach ($errors as $field_errors) {
+      foreach ($field_errors as $langcode => $errors) {
+        $field_state           = field_form_get_state($form['#parents'], $field_name, $langcode, $form_state);
+        $field_state['errors'] = $errors;
+        field_form_set_state($form['#parents'], $field_name, $langcode, $form_state, $field_state);
+      }
+    }
+    ctools_field_invoke_field_default($field_instance, 'form_errors', $entity_type, $entity, $form, $form_state);
+  }
+}
+
+/**
+ * Submit field editing form
+ */
+function bf_pief_field_edit_field_form_submit($form, &$form_state) {
+  $entity_type    = $form_state['entity_type'];
+  $entity         = $form_state['entity'];
+  $field_instance = $form_state['field_instance'];
+
+  ctools_field_invoke_field_default($field_instance, 'extract_form_values', $entity_type, $entity, $form, $form_state);
+  ctools_field_invoke_field_default($field_instance, 'submit', $entity_type, $entity, $form, $form_state);
+
+  foreach (module_implements('field_attach_submit') as $module) {
+    $function = $module . '_field_attach_submit';
+    $function($entity_type, $entity, $form, $form_state);
+  }
+}
+
+/**
+ * Subform to edit the entity 'title' field.
+ */
+function bf_pief_field_edit_node_title_form(&$form, &$form_state) {
+  $node = $form_state['entity'];
+  $type = node_type_get_type($node);
+
+  $form['title'] = array(
+    '#type'          => 'textfield',
+    '#title'         => check_plain($type->title_label),
+    '#default_value' => !empty($node->title) ? $node->title : '',
+    '#required'      => TRUE,
+    '#weight'        => -5,
+  );
+
+  $form['#submit'][] = 'bf_pief_field_edit_node_title_form_submit';
+}
+
+function bf_pief_field_edit_node_title_form_submit($form, &$form_state) {
+  $form_state['entity']->title = $form_state['values']['title'];
+}
+
+/**
+ * General submit callback. Simply handles the revision.
+ */
+function bf_pief_field_edit_form_submit($form, &$form_state) {
+  $entity = $form_state['entity'];
+  if (!empty($form_state['use revisions'])) {
+    $entity->revision = $form_state['values']['revision'];
+    $entity->log      = $form_state['values']['log'];
+  }
+}
+
+/**
+ * Redirect back to original page when user hits the cancel button.
+ */
+function bf_pief_field_edit_form_cancel($form, &$form_state) {
+  drupal_goto($form_state['redirect']);
+}
+
+/**
+ * Determine if an entity uses revisions.
+ */
+function _bf_pief_entity_allows_revisions($entity_type, $bundle, $entity) {
+  $retval = array(FALSE, FALSE);
+
+  switch ($entity_type) {
+    case 'node':
+      $node_options = variable_get('node_options_' . $bundle, array('status', 'promote'));
+      $retval[0]    = in_array('revision', $node_options);
+      $retval[1]    = user_access('administer nodes');
+      break;
+
+    default:
+      $entity_info = entity_get_info($entity_type);
+      $retval[0]   = !empty($entity_info['revision table']);
+      break;
+  }
+
+  drupal_alter('bf_pief_entity_allow_revisions', $retval);
+  $entity->revision = $retval[0];
+  $entity->log      = '';
+
+  return $retval;
+}

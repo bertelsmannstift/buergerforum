@@ -1,0 +1,5 @@
+name = BF Document export
+description = Creating export file with docx format (using htmltodocx)
+package = BF
+core = 7.x
+version = 7.x-1.0

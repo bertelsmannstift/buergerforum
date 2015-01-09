@@ -1,0 +1,26 @@
+Index: sites/all/modules/contrib/secureshare/secureshare.module
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/secureshare/secureshare.module	(revision 1b56de7c829bcefd0afeb01e80c734008fd1968d)
++++ sites/all/modules/contrib/secureshare/secureshare.module	(revision )
+@@ -190,7 +190,7 @@
+  * @param $element
+  */
+ function secureshare_pre_render_element($element) {
+-
++  global $language;
+   // Skip already processed elements.
+   if (isset($element['#secureshare_processed'])) {
+     return $element;
+@@ -231,7 +231,7 @@
+   // merge in the default images from library
+   $settings['services']['facebook']['dummy_img'] =
+     empty($settings['services']['facebook']['dummy_img']) ?
+-      base_path() . $library_path . '/socialshareprivacy/images/dummy_facebook.png' :
++      base_path() . $library_path . '/socialshareprivacy/images/dummy_facebook_'.$language->language.'.png' :
+       $settings['services']['facebook']['dummy_img'];
+ 
+   $settings['services']['twitter']['dummy_img'] =
+\ No newline at end of file

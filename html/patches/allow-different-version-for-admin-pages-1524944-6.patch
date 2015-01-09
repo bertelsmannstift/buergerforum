@@ -1,0 +1,64 @@
+diff --git a/jquery_update.module b/jquery_update.module
+index 18932a3..5ff7ead 100644
+--- a/jquery_update.module
++++ b/jquery_update.module
+@@ -78,6 +78,16 @@ function jquery_update_library_alter(&$javascript, $module) {
+ 
+   // Replace jQuery with the latest version.
+   $version = variable_get('jquery_update_jquery_version', '1.5');
++
++  // If a different version is specified for administration pages, use it instead.
++  $current_path = current_path();
++  if (path_is_admin($current_path) && variable_get('jquery_update_admin', FALSE)) {
++    $admin_version = variable_get('jquery_update_jquery_admin_version', '1.5');
++    if (version_compare($version, $admin_version, '!=')) {
++      $version = $admin_version;
++    }
++  }
++
+   jquery_update_jquery_replace($javascript, $cdn, $path, $min, $version);
+ 
+   // Replace jQuery UI with CDN or local files. If from a CDN include all of jQuery UI.
+@@ -117,7 +127,11 @@ function jquery_update_menu() {
+  * Implementation of hook_form_FORM_ID().
+  */
+ function jquery_update_settings_form() {
+-  $form['jquery_update_jquery_version'] = array(
++  $form['version_options'] = array(
++    '#type' => 'fieldset',
++    '#title' => t('Version options'),
++  );
++  $form['version_options']['jquery_update_jquery_version'] = array(
+     '#type' => 'select',
+     '#title' => t('jQuery Version'),
+     '#options' => array(
+@@ -127,6 +141,29 @@ function jquery_update_settings_form() {
+     '#default_value' => variable_get('jquery_update_jquery_version', '1.5'),
+     '#description' => t('Select which jQuery version branch to use.'),
+   );
++  $form['version_options']['jquery_update_admin'] = array(
++    '#type' => 'checkbox',
++    '#title' => t('Use a different jQuery version for administration pages.'),
++    '#default_value' => variable_get('jquery_update_admin', FALSE),
++  );
++  $form['version_options']['options'] = array(
++    '#type' => 'container',
++    '#states' => array(
++      'invisible' => array(
++        'input[name="jquery_update_admin"]' => array('checked' => FALSE),
++      ),
++    ),
++  );
++  $form['version_options']['options']['jquery_update_jquery_admin_version'] = array(
++    '#type' => 'select',
++    '#title' => t('jQuery version for Administration pages'),
++    '#options' => array(
++      '1.5' => '1.5',
++      '1.7' => '1.7',
++    ),
++    '#default_value' => variable_get('jquery_update_jquery_admin_version', '1.5'),
++    '#description' => t('Select which jQuery version branch to use for administration pages.'),
++  );
+   $form['jquery_update_compression_type'] = array(
+     '#type' => 'radios',
+     '#title' => t('jQuery compression level'),

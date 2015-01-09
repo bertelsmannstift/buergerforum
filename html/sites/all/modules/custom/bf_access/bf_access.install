@@ -1,0 +1,18 @@
+<?php
+
+/**
+ * @file
+ * Install function for the bf_register_form module.
+ */
+
+
+/**
+ * Implements hook_enable().
+ */
+function bf_access_enable() {
+//edited weight module, for cancel submit module user_registrationpassword
+  db_update('system')
+    ->fields(array('weight' => 9999))
+    ->condition('name', 'bf_access')
+    ->execute();
+}

@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the BF Secure share feature.
+ */
+
+include_once 'bf_secure_share.features.inc';

@@ -1,0 +1,25 @@
+diff --git a/includes/flag/flag_flag.inc b/includes/flag/flag_flag.inc
+index 2571044..9afbafb 100644
+--- a/includes/flag/flag_flag.inc
++++ b/includes/flag/flag_flag.inc
+@@ -788,9 +788,6 @@ class flag_flag {
+       }
+     }
+     elseif ($action == 'flag') {
+-      // Invoke hook_entity_presave().
+-      module_invoke_all('entity_presave', $flagging, 'flagging');
+-
+       if ($this->uses_anonymous_cookies()) {
+         $this->_flag_anonymous($entity_id);
+       }
+@@ -801,6 +798,10 @@ class flag_flag {
+           // Construct a new flagging object if we don't have one.
+           $flagging = $this->new_flagging($entity_id, $uid, $sid);
+         }
++
++        // Invoke hook_entity_presave().
++        module_invoke_all('entity_presave', $flagging, 'flagging');
++
+         // Save the flagging entity (just our table).
+         $flagging_id = $this->_flag($entity_id, $uid, $sid);
+         // The _flag() method is a plain DB record writer, so it's a bit

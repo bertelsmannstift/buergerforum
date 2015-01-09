@@ -1,0 +1,156 @@
+Index: sites/all/modules/contrib/counter/counter.module
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/counter/counter.module	(revision 21bec11c31415b96640be9a47345311a1f450b40)
++++ sites/all/modules/contrib/counter/counter.module	(revision )
+@@ -86,6 +86,82 @@
+ }
+ 
+ /**
++ * Implements hook_page_build().
++ */
++function counter_page_build(&$page) {
++  if (!path_is_admin(current_path()) && variable_get('counter_override',0)) {
++    $sql_site_counter  ="SELECT counter_value FROM {counter_data} WHERE counter_name='site_counter'";
++    $site_counter      = db_query($sql_site_counter)->fetchField();
++
++    $new_site_counter = $site_counter + 1;
++
++    $sql = " UPDATE {counter_data} SET counter_value = :counter_value WHERE counter_name='site_counter'";
++    $results = db_query($sql, array(':counter_value' => $new_site_counter));
++
++    global $user;
++    $counter_ip     = $_SERVER['REMOTE_ADDR'];
++    $counter_svr_ip = $_SERVER['SERVER_ADDR'];
++    $counter_date = date('Y-m-d H:i:s');
++    $counter_page   = check_plain(request_uri());
++
++    //counter_insert_delay
++    $db_types = db_driver(); // $GLOBALS['db_type']; //substr($db_url,0, strpos($db_url,':'));
++
++    switch ($db_types) {
++      case 'mssql':
++        $sql = " SELECT TOP 1 counter_date FROM {counter} ORDER BY counter_date DESC";
++        break;
++      case 'oracle':
++        $sql = " SELECT counter_date FROM {counter} WHERE ROWNUM=1 ORDER BY counter_date DESC";
++        break;
++      default: //mysql, mysqli, pgsql
++        $sql = " SELECT counter_date FROM {counter} ORDER BY counter_date DESC LIMIT 1";
++    }
++
++    $counter_lastdate = db_query($sql)->fetchField();
++
++    //Check if permited to insert data
++
++    $interval = strtotime($counter_date) - strtotime($counter_lastdate);
++
++    $data_insert = ($interval >= variable_get('counter_insert_delay', 1)  ? 1 : 0);
++    $data_update = ($interval >= variable_get('counter_refresh_delay', 1) ? 1 : 0);
++
++    switch ($db_types) {
++      case 'mssql':
++        $sql = " INSERT INTO {counter} (counter_ip,counter_date,counter_page)" .
++          " VALUES (:counter_ip, :counter_date, :counter_page)" .
++          " WHERE NOT EXISTS" .
++          " (SELECT * FROM {counter} WHERE counter_ip= :counter_ip " .
++          "  AND counter_date= :counter_date AND counter_page = :counter_page)";
++        break;
++      case 'oracle':
++        $sql = " INSERT INTO {counter} (counter_ip,counter_date,counter_page)" .
++          " VALUES (:counter_ip, :counter_date, :counter_page)";
++        break;
++      case 'pgsql':
++        $sql_del= "DELETE FROM {counter} WHERE counter_ip= :counter_ip AND counter_date= :counter_dat eAND counter_page=:counter_page";
++        db_query($sql_del, array(':counter_ip' => $counter_ip, ':counter_date' => $counter_date, ':counter_page' => $counter_page));
++
++        $sql = " INSERT INTO {counter} (counter_ip,counter_date,counter_page)" .
++          " VALUES (:counter_ip, :counter_date, :counter_page)";
++        break;
++      default: //mysql, mysqli
++        $sql = " INSERT IGNORE INTO {counter} (counter_ip,counter_date,counter_page)" .
++          " VALUES (:counter_ip, :counter_date, :counter_page)";
++    }
++      if ($data_insert && ($user->uid <> 1)) {
++        $results = db_query($sql, array(':counter_ip' => $counter_ip, ':counter_date' => $counter_date, ':counter_page' => $counter_page));
++      }
++      else {
++        if ($data_insert && ($user->uid ==1) && !variable_get('counter_skip_admin', 0)) {
++          $results = db_query($sql, array(':counter_ip' => $counter_ip, ':counter_date' => $counter_date, ':counter_page' => $counter_page));
++        }
++      }
++  }
++}
++
++/**
+  * Implementation of hook_block().
+  *
+  */
+@@ -172,7 +248,7 @@
+         $sql = " INSERT IGNORE INTO {counter} (counter_ip,counter_date,counter_page)" .
+                " VALUES (:counter_ip, :counter_date, :counter_page)";
+     }
+-    
++  if (!variable_get('counter_override',0)) {
+     if ($data_insert && ($user->uid <> 1)) {
+       $results = db_query($sql, array(':counter_ip' => $counter_ip, ':counter_date' => $counter_date, ':counter_page' => $counter_page));    
+     }
+@@ -181,16 +257,18 @@
+         $results = db_query($sql, array(':counter_ip' => $counter_ip, ':counter_date' => $counter_date, ':counter_page' => $counter_page));  
+       }  
+     }
+-    
+-    
++  }
++    //overrride
++    if (!variable_get('counter_override',0)) {
+-    $sql_site_counter  ="SELECT counter_value FROM {counter_data} WHERE counter_name='site_counter'";
+-    $site_counter      = db_query($sql_site_counter)->fetchField();
+-    
+-    $new_site_counter = $site_counter + 1;
+-        
+-    $sql = " UPDATE {counter_data} SET counter_value = :counter_value WHERE counter_name='site_counter'";
+-    $results = db_query($sql, array(':counter_value' => $new_site_counter));
++      $sql_site_counter  ="SELECT counter_value FROM {counter_data} WHERE counter_name='site_counter'";
++      $site_counter      = db_query($sql_site_counter)->fetchField();
++
++      $new_site_counter = $site_counter + 1;
++
++      $sql = " UPDATE {counter_data} SET counter_value = :counter_value WHERE counter_name='site_counter'";
++      $results = db_query($sql, array(':counter_value' => $new_site_counter));
++    }
+-      
++
+     //Read counter_data
+     //published_node, registered_user, site_counter, unique_visitor, unpublished_node, unregistered_user
+     $sql = " SELECT * FROM {counter_data} ORDER BY counter_name";      
+\ No newline at end of file
+Index: sites/all/modules/contrib/counter/counter.settings.inc
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/counter/counter.settings.inc	(revision 21bec11c31415b96640be9a47345311a1f450b40)
++++ sites/all/modules/contrib/counter/counter.settings.inc	(revision )
+@@ -110,7 +110,18 @@
+     '#title' => t('Visitors This Year'),
+     '#default_value' => variable_get('counter_statistic_year', 1)
+   );
+-  
++  $form['counter_override'] = array(
++    '#type' => 'fieldset',
++    '#weight' => -20,
++    '#title' => t('Override functional'),
++    '#collapsible' => TRUE,
++    '#collapsed' => FALSE
++  );
++  $form['counter_override']['counter_override'] = array(
++    '#type' => 'checkbox',
++    '#title' => t('Override functional'),
++    '#default_value' => variable_get('counter_override', 0)
++  );
+   return system_settings_form($form);
+ }
+ 

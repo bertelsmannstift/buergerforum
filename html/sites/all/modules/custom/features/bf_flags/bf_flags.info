@@ -1,0 +1,14 @@
+name = BF Flags
+core = 7.x
+package = BF Features
+version = 7.x-0.5
+project = bf_flags
+dependencies[] = comment
+dependencies[] = flag
+features[features_api][] = api:2
+features[flag][] = bf_comment_approve
+features[flag][] = bf_comment_close
+features[flag][] = bf_comment_faq
+features[flag][] = bf_comment_hide
+features[flag][] = bf_comment_mark
+features[flag][] = bf_comment_vote

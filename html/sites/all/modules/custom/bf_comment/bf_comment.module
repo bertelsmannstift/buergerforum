@@ -1,0 +1,882 @@
+<?php
+/**
+ * @file
+ *
+ * Create CTools content type for panels .
+ */
+
+/**
+ * Implements hook_js_alter().
+ */
+function bf_comment_js_alter(&$javascript) {
+  // Make sure to add 'misc/form.js'.
+  if (!isset($javascript['misc/form.js'])) {
+    drupal_add_js('misc/form.js');
+  }
+
+  $collapse = drupal_get_path('module', 'bf_comment') . '/js/collapse.js';
+  if (!isset($javascript[$collapse]) && !isset($javascript['misc/collapse.js'])) {
+    drupal_add_js($collapse);
+  }
+}
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function bf_comment_ctools_plugin_directory($owner, $plugin_type) {
+  if ($owner == 'ctools' && $plugin_type == 'content_types') {
+    return 'plugins/content_types';
+  }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function bf_comment_menu() {
+  $items = array();
+
+  $items['bfcomment/add/%node'] = array(
+    'page callback'     => 'bf_comment_add_callback',
+    'page arguments'    => array(2),
+    'access callback'   => 'node_access',
+    'access arguments'  => array('view', 2),
+    'delivery callback' => 'ajax_deliver',
+    'type'              => MENU_CALLBACK,
+  );
+  $items['bfcomment/cancel'] = array(
+    'page callback'     => 'bf_comment_cancel_callback',
+    'access callback'   => TRUE,
+    'delivery callback' => 'ajax_deliver',
+    'type'              => MENU_CALLBACK,
+  );
+  $items['ajax_comments/reply-via-mail/%comment'] = array(
+    'page callback'     => 'bf_comment_reply_via_mail',
+    'page arguments'    => array(2),
+    'access callback'   => 'comment_access',
+    'access arguments'  => array('edit', 2),
+    'delivery callback' => 'ajax_deliver',
+    'type'              => MENU_CALLBACK,
+  );
+  $items['ajax_comments/reply-via-mail/cancel/%comment'] = array(
+    'page callback'     => 'bf_comment_reply_via_mail_cancel',
+    'page arguments'    => array(3),
+    'access callback'   => 'comment_access',
+    'access arguments'  => array('edit', 3),
+    'delivery callback' => 'ajax_deliver',
+    'type'              => MENU_CALLBACK,
+  );
+  $items['flag/%/bf_comment_vote/%'] = array(
+    'page callback'     => 'bf_comment_vote_comment',
+    'page arguments'    => array(1, 3),
+    'access callback'   => 'user_access',
+    'access arguments'  => array('access content'),
+    'delivery callback' => 'ajax_deliver',
+    'type'              => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+ * Ajax menu callback.
+ */
+function bf_comment_add_callback($node) {
+  // Build form.
+  $form_build = drupal_get_form("comment_node_{$node->type}_form", (object) array('nid' => $node->nid));
+  $form = drupal_render($form_build);
+  $commands[] = ajax_command_append('.pane-add-comment-link', $form);
+  $commands[] = ajax_command_css('.add-comment-btn', array('display' => 'none'));
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+/**
+ * Ajax menu callback.
+ */
+function bf_comment_cancel_callback() {
+  $commands[] = ajax_command_replace('.pane-add-comment-link .comment-form', '');
+  $commands[] = ajax_command_css('.add-comment-btn', array('display' => 'inline'));
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+
+/**
+ * Vote comment callback
+ */
+function bf_comment_vote_comment($action, $entity_id) {
+  global $user;
+  $flag = flag_get_flag('bf_comment_vote') or die('no "nf_comment_vote" flag defined');
+  switch ($action) {
+    case 'flag':
+      $flag->flag('flag', $entity_id, $user);
+      break;
+    case 'unflag':
+      $flag->flag('unflag', $entity_id, $user);
+      break;
+  }
+  $vote_action = 'flag';
+  // Get count of vote.
+  $query = db_select('flagging', 'f')
+    ->condition('f.fid', $flag->fid)
+    ->condition('f.entity_id', $entity_id);
+  $query->addExpression('COUNT(fid)', 'count');
+  $flag_vote_count = $query->execute()->fetchField();
+
+  $supported = '';
+  if ($flag_vote_count > 0) {
+    // Get users of vote
+    $query = db_select('flagging', 'f');
+    $query->join('field_data_field_displayed_name', 'user', 'user.entity_id=f.uid');
+    $query->condition('f.entity_id', $entity_id)
+      ->condition('f.fid', $flag->fid);
+    $query->addField('f', 'uid');
+    $query->addField('user', 'field_displayed_name_value', 'name');
+    $query->orderBy('timestamp', 'DESC');
+    $query->range(0, 3);
+    $users_vote = $query->execute()->fetchAllKeyed();
+    if (!user_is_anonymous()) {
+      $supported = t('@count x supported by:', array('@count' => $flag_vote_count));
+      foreach ($users_vote as $uid => $name) {
+        $supported .= ' ' . l($name, 'user/' . $uid) . ',';
+      }
+      $supported = substr($supported, 0, -1);
+      if ($flag_vote_count > 3) {
+        $supported .= ' ' . t('and @count others', array('@count' => $flag_vote_count - 3));
+      }
+    }
+    else {
+      $supported = t('@count x supported', array('@count' => $flag_vote_count));
+    }
+
+    // check if user vote.
+    $query = db_select('flagging', 'f');
+    $query->condition('f.entity_id', $entity_id)
+      ->condition('f.uid', $user->uid);
+    $query->addField('f', 'uid');
+    $user_vote = $query->execute()->fetchField();
+    if ($user_vote) {
+      $vote_action = 'unflag';
+    }
+  }
+  $commands = array();
+  $commands[] = ajax_command_replace('.flag-bf-comment-vote-' . $entity_id, '<span class="flag-wrapper flag-bf-comment-vote flag-bf-comment-vote-' . $entity_id . '">' . l($flag_vote_count, 'flag/' . $vote_action . '/bf_comment_vote/' . $entity_id, array('attributes' => array('class' => 'use-ajax flag ' . $vote_action . '-action'))) . '</div>');
+  $commands[] = ajax_command_replace('#comment-wrapper-' . $entity_id . ' .supported', '<div class="supported">' . $supported . '</div>');
+
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+/**
+ * Implementation of hook_comment_view_alter.
+ */
+function bf_comment_comment_view_alter(&$build, $view_mode) {
+  if (!empty($build['#comment']->cid)) {
+    $flag_close = flag_get_flag('bf_comment_close') or die('no "bf_comment_close" flag defined');
+    // check if comment close.
+    if ($flag_close->is_flagged($build['#comment']->cid)) {
+      $build['#prefix'] = str_replace('ajax-comment-wrapper', 'ajax-comment-wrapper comment-closed', $build['#prefix']);
+    }
+  }
+}
+
+/**
+ * Callback for clicking "reply via mail".
+ */
+function bf_comment_reply_via_mail($comment) {
+
+  // Build form.
+  $form_build = drupal_get_form('bf_comment_reply_via_mail_form', (object) array('cid' => $comment->cid));
+
+  $form = drupal_render($form_build);
+
+  // Add the new form.
+  $commands[] = ajax_command_append('#comment-wrapper-' . $comment->cid . ' .fieldset-comment-wrapper', '<div class="reply-mail-form">' . $form . '</div>');
+  $commands[] = ajax_command_css('#comment-wrapper-' . $comment->cid . ' .comment-reply-mail', array('display' => 'none'));
+  $commands[] = ajax_command_css('#comment-wrapper-' . $comment->cid . ' .comment-reply', array('display' => 'none'));
+  $commands[] = ajax_command_invoke('#comment-wrapper-' . $comment->cid . ' .form-item-body textarea', 'focus');
+
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+/**
+ * Callback for clicking cancel "reply via mail".
+ */
+function bf_comment_reply_via_mail_cancel($comment) {
+  // Cancel reply via mail form.
+  $commands[] = ajax_command_replace('#comment-wrapper-' . $comment->cid . ' .reply-mail-form', '');
+  $commands[] = ajax_command_css('#comment-wrapper-' . $comment->cid . ' .comment-reply-mail', array('display' => 'inline-block'));
+  $commands[] = ajax_command_css('#comment-wrapper-' . $comment->cid . ' .comment-reply', array('display' => 'inline-block'));
+
+
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+/**
+ * Implementation of hook_form.
+ */
+function bf_comment_reply_via_mail_form($form, &$form_state) {
+  global $user;
+  $cid = $form_state['build_info']['args'][0]->cid;
+  $comment = comment_load($cid);
+  $recipient = user_load($comment->uid);
+  $sender = user_load($user->uid);
+
+
+  $form['info'] = array(
+    '#weight' => -7,
+    '#markup' => '<div class="reply-via-mail-to">' . t('Recipient: ') . bf_core_display_name($recipient) .
+      '</div><div class="reply-via-mail-from">' . t('Sender:') . t('@name @mail',
+      array('@name' => bf_core_display_name($sender), '@mail' => '<' . $user->mail . '>')) . '</div>',
+  );
+
+  $form['recipient'] = array(
+    '#type'  => 'hidden',
+    '#value' => $recipient->uid,
+  );
+
+  $form['sender'] = array(
+    '#type'  => 'hidden',
+    '#value' => $sender->uid,
+  );
+
+  $form['subject'] = array(
+    '#type'          => 'textfield',
+    '#title'         => t('Subject'),
+    '#default_value' => 'AW: ' . $comment->subject,
+    '#maxlength'     => 60,
+    '#size'          => 30,
+  );
+
+  $form['body'] = array(
+    '#title'         => t('Message'),
+    '#type'          => 'textarea',
+    '#default_value' => PHP_EOL . PHP_EOL . '> ' . $comment->comment_body[LANGUAGE_NONE][0]['value'],
+    '#required'      => TRUE,
+  );
+
+  $form['send_copy'] = array(
+    '#type'          => 'checkbox',
+    '#title'         => t('Send me message copy'),
+    '#default_value' => 1,
+  );
+
+  $form['submit'] = array(
+    '#type'  => 'submit',
+    '#value' => t('Send message'),
+  );
+  $form['cancel'] = array(
+    '#markup' => l(t('Cancel'), 'ajax_comments/reply-via-mail/cancel/' . $comment->cid, array('attributes' => array('class' => array('use-ajax')))),
+  );
+  $form['#submit'][] = 'bf_comment_reply_via_mail_form_submit';
+
+  return $form;
+}
+
+/**
+ * Implements hook_form_submit().
+ */
+function bf_comment_reply_via_mail_form_submit($form, &$form_state) {
+
+  // send mail to recipient and maybe send copy to sender.
+  $values = $form_state['values'];
+  $recipient = user_load($values['recipient']);
+  $language = language_default();
+  $params = array(
+    'context' => array(
+      'subject' => $values['subject'],
+      'message' => $values['body'],
+    ),
+  );
+
+  drupal_mail('system', 'mail', $recipient->mail, $language, $params);
+
+  if ($values['send_copy'] == 1) {
+    $sender = user_load($values['sender']);
+    drupal_mail('system', 'mail', $sender->mail, $language, $params);
+  }
+
+  drupal_set_message(t('Thank you. Your answer has been sent to recipient'));
+
+  // marked comment.
+  $comment = comment_load($form_state['build_info']['args'][0]->cid);
+  $flag = flag_get_flag('bf_comment_mark') or die('no "bf_comment_mark" flag defined');
+  $flag->flag('flag', $comment->cid);
+
+  // redirect the page.
+
+  drupal_goto('node/' . $comment->nid);
+}
+
+
+/**
+ * Implements hook_preprocess_comment().
+ */
+function bf_comment_preprocess_comment(&$variables) {
+  // get data.
+  $cid = $variables['elements']['#comment']->cid;
+  $flag_hide = flag_get_flag('bf_comment_hide') or die('no "bf_comment_hide" flag defined');
+  $flag_close = flag_get_flag('bf_comment_close') or die('no "bf_comment_close" flag defined');
+  $flag_vote = flag_get_flag('bf_comment_vote') or die('no "bf_comment_close" flag defined');
+  $current_user = user_load($variables['user']->uid);
+  $variables['vote_close'] = FALSE;
+  $variables['vote_action'] = 'flag';
+  $reply_comment = TRUE;
+  $close_comment = TRUE;
+  $variables['use_complaint'] = TRUE;
+  $variables['supported'] = '';
+
+  // get default picture.
+  $default_image = array(
+    'style_name' => 'bf_user_picture',
+    'path'       => 'public://default_profile.gif',
+    'alt'        => t('Your profile picture'),
+  );
+  $default_picture = theme('image_style', $default_image);
+
+  // Set template for comment.
+  $variables['theme_hook_suggestion'] = 'comment__custom_' . $variables['node']->type;
+  if (isset($variables['content']['comment_body'])) {
+    $variables['content']['comment_body'][0]['#markup'] = str_replace("&amp;", "&", check_markup($variables['content']['comment_body'][0]['#markup'], 'plain_text'));
+  }
+  unset($variables['content']['links']['comment']['#links']['comment-delete']);
+
+  // children comments functional.
+  if ($variables['comment']->pid != 0) {
+    $reply_comment = FALSE;
+    $close_comment = FALSE;
+    unset($variables['content']['links']['flag']['#links']['flag-bf_comment_faq']);
+    $variables['title'] = $variables['comment']->subject;
+    // Get count of vote.
+    $query = db_select('flagging', 'f')
+      ->condition('f.fid', $flag_vote->fid)
+      ->condition('f.entity_id', $cid);
+    $query->addExpression('COUNT(fid)', 'count');
+    $variables['flag_vote_count'] = $query->execute()->fetchField();
+
+    if ($variables['flag_vote_count'] > 0) {
+      // Get users of vote
+      $query = db_select('flagging', 'f');
+      $query->join('field_data_field_displayed_name', 'user', 'user.entity_id=f.uid');
+      $query->condition('f.entity_id', $cid)
+        ->condition('f.fid', $flag_vote->fid);
+      $query->addField('f', 'uid');
+      $query->addField('user', 'field_displayed_name_value', 'name');
+      $query->orderBy('timestamp', 'DESC');
+      $query->range(0, 3);
+      $users_vote = $query->execute()->fetchAllKeyed();
+      if (!user_is_anonymous()) {
+        $variables['supported'] = t('@count x supported by:', array('@count' => $variables['flag_vote_count']));
+        foreach ($users_vote as $uid => $name) {
+          $variables['supported'] .= ' ' . l($name, 'user/' . $uid) . ',';
+        }
+        $variables['supported'] = substr($variables['supported'], 0, -1);
+        if ($variables['flag_vote_count'] > 3) {
+          $variables['supported'] .= ' ' . t('and @count others', array('@count' => $variables['flag_vote_count'] - 3));
+        }
+      }
+      else {
+        $variables['supported'] = t('@count x supported', array('@count' => $variables['flag_vote_count']));
+      }
+
+      // check if user vote.
+      $query = db_select('flagging', 'f');
+      $query->condition('f.entity_id', $cid)
+        ->condition('f.uid', $variables['user']->uid);
+      $query->addField('f', 'uid');
+      $user_vote = $query->execute()->fetchField();
+      if ($user_vote) {
+        $variables['vote_action'] = 'unflag';
+      }
+    }
+  }
+  else {
+    unset($variables['content']['flag_bf_comment_vote']);
+  }
+
+  // get display name of owner comment.
+  $comment_owner_id = $variables['comment']->uid;
+  $comment_owner = user_load($comment_owner_id);
+  $owner_roles = $comment_owner->roles;
+  if (isset($comment_owner->field_displayed_name) && $comment_owner->uid != 0) {
+    $display_name = $comment_owner->field_displayed_name[LANGUAGE_NONE][0]['value'];
+  }
+  else {
+    $display_name = t('Member');
+  }
+
+  if (!user_is_anonymous() && $comment_owner->uid != 0) {
+    $display_name = l($display_name, 'user/' . $comment_owner_id);
+  }
+
+  // get changed time
+  $query = db_select('comment', 'c');
+  $query->addField('c', 'changed');
+  $query->condition('c.cid', $cid);
+  $changed = $query->execute()->fetchField();
+
+  $variables['submitted'] = $display_name . ' / ' . date('d.m.Y H:i', $changed);
+
+  // Get count of children comments.
+  $query = db_select('comment', 'c');
+  $query->leftJoin('flag_counts', 'fc', 'fc.entity_id = c.cid');
+  $query->leftJoin('flag', 'f', 'f.fid=fc.fid');
+  $query->condition('c.pid', $cid);
+  $query->condition('c.status', 1);
+  if ($variables['node']->type == 'page') {
+    $query->condition('fc.count', 1);
+  }
+  if ($variables['node']->type == 'proposal') {
+    $query->condition('fc.fid', $flag_vote->fid);
+  }
+  $query->addExpression('COUNT(pid)', 'count');
+  $query->addExpression('MAX(created)', 'created');
+  $variables['children_comments'] = $query->execute()->fetch();
+
+
+  // add class for expert comment.
+  if (in_array('Expert', $comment_owner->roles)) {
+    $variables['classes_array'][] = 'expert-comment';
+    $gender = $comment_owner->field_sex['und'][0]['value'];
+    $role = "\"".str_replace("\r", "",bf_core_get_gender_role('Expert', $gender))."\"";
+    $css = '#comment-wrapper-' . $variables['elements']['#comment']->cid . ' .expert-comment .submitted a:after{content: ' . $role . '}';
+    drupal_add_css(str_replace("\n", "", $css), 'inline');
+  }
+
+  // check if comment hide.
+  if ($flag_hide->is_flagged($cid)) {
+    $variables['classes_array'][] = 'comment-unpublished';
+    if (!in_array('Admin', $current_user->roles) && !in_array('Manager', $current_user->roles)) {
+      $variables['content']['comment_body'][0]['#markup'] = t('Comment hidden by Administrator');
+      $variables['submitted'] = $variables['changed'];
+      $variables['permalink'] = '';
+      $variables['title'] = '<a href="#" class="permalink">' . t('Comment hidden by Administrator') . '</a>';
+      $variables['signature'] = '';
+      $variables['picture'] = '<div class="user-picture">' . $default_picture . '</div>';
+      unset($variables['content']['links']['comment']['#links']);
+    }
+  }
+
+  // close comment functional.
+  if ($variables['node']->type == 'proposal') {
+    $flag_vote = flag_get_flag('bf_comment_vote') or die('no "bf_comment_vote" flag defined');
+    $or = db_or();
+    $or->condition('fc.fid', $flag_vote->fid);
+    $or->condition('fc.fid', NULL, 'IS');
+
+    $variables['comment_close'] = FALSE;
+    if ($variables['comment']->pid == 0) {
+      $query = db_select('comment', 'c');
+      $query->leftJoin('flag_counts', 'fc', 'fc.entity_id = c.cid');
+      $query->fields('c');
+      $query->condition('c.pid', $cid);
+      $query->condition('c.status', 1);
+      $query->condition($or);
+      $query->orderBy('fc.count', 'ASC');
+      $query->orderBy('c.changed', 'ASC');
+      $comment_close = $query->execute()->fetchAssoc();
+      if (empty($comment_close)) {
+        $variables['comment_close'] = TRUE;
+      }
+    }
+    else {
+      $query = db_select('comment', 'c');
+      $query->leftJoin('flag_counts', 'fc', 'fc.entity_id = c.cid');
+      $query->fields('c');
+      $query->condition('c.pid', $variables['comment']->pid);
+      $query->condition('c.status', 1);
+      $query->condition($or);
+      $query->orderBy('fc.count', 'ASC');
+      $query->orderBy('c.changed', 'ASC');
+      $comment_close = $query->execute()->fetchAssoc();
+      if ($comment_close['cid'] == $cid) {
+        $variables['comment_close'] = TRUE;
+      }
+    }
+  }
+
+
+  // check if comment close.
+  if ($flag_close->is_flagged($cid)) {
+    $variables['classes_array'][] = 'comment-closed';
+    $reply_comment = FALSE;
+  }
+
+  // anonymous user functional.
+  if (user_is_anonymous()) {
+    if (!in_array('Admin', $owner_roles) && !in_array('Manager', $owner_roles) && !in_array('Expert', $owner_roles)) {
+      $variables['picture'] = '<div class="user-picture">' . $default_picture . '</div>';
+      $variables['submitted'] = t('Member') . ' / ' . date('d.m.Y H:i', $changed);
+    }
+    $variables['vote_close'] = TRUE;
+    $variables['use_complaint'] = FALSE;
+  }
+
+  // comment approve and cas-faq comments functional.
+  if ($variables['node']->type == 'page') {
+    $flag_approve = flag_get_flag('bf_comment_approve') or die('no "bf_comment_approve" flag defined');
+    $flag_mark = flag_get_flag('bf_comment_mark') or die('no "bf_comment_mark" flag defined');
+    if (!$flag_approve->is_flagged($cid)) {
+      $variables['classes_array'][] = 'comment-not-approved';
+    }
+    if ($flag_mark->is_flagged($cid)) {
+      $variables['classes_array'][] = 'comment-marked';
+    }
+    if ($flag_approve->is_flagged($cid) || in_array('Manager', $current_user->roles) || in_array('Admin', $current_user->roles)) {
+      $variables['approve'] = TRUE;
+    }
+    else {
+      $variables['approve'] = FALSE;
+    }
+    if (!in_array('Manager', $current_user->roles) && !in_array('Admin', $current_user->roles)) {
+      if (isset($variables['content']['comment_body'])) {
+        if ($variables['content']['comment_body']['#object']->pid != 0) {
+          if ((!$flag_approve->is_flagged($variables['content']['comment_body']['#object']->pid))) {
+            $variables['approve'] = FALSE;
+          }
+        }
+      }
+      $reply_comment = FALSE;
+      unset($variables['content']['links']['flag']['#links']['flag-bf_comment_approve']);
+      unset($variables['content']['links']['comment']['#links']['comment-edit']);
+    }
+    // reply-via-mail functional.
+    if ($variables['elements']['#comment']->pid == 0) {
+      if (in_array('Admin', $current_user->roles) || in_array('Manager', $current_user->roles)) {
+        $variables['content']['links']['comment']['#links']['comment-reply-mail'] = array(
+          'title'      => t('reply via Email'),
+          'href'       => 'ajax_comments/reply-via-mail/' . $cid,
+          'html'       => TRUE,
+          'attributes' => array(
+            'class' => array('use-ajax', 'ajax-comment-reply-mail'),
+            'id'    => array('reply-mail-' . $cid),
+          ),
+        );
+      }
+    }
+    unset($variables['content']['links']['flag']['#links']['flag-bf_comment_mark']);
+  }
+
+  $variables['is_faq'] = FALSE;
+  $variables['faq_filter'] = TRUE;
+  // faq comments functional.
+  if (!empty($variables['node']->title_original)) {
+    if ($variables['node']->title_original != 'FAQ') {
+      unset($variables['content']['links']['flag']['#links']['flag-bf_comment_faq']);
+    }
+    else {
+      $flag_faq = flag_get_flag('bf_comment_faq') or die('no "bf_comment_faq" flag defined');
+      if ($flag_faq->is_flagged($cid)) {
+        $variables['is_faq'] = TRUE;
+      }
+      // faq filter
+      if (isset($_SESSION['faq_exposed_form_value'])) {
+        $faq_mark = $_SESSION['faq_exposed_form_value'];
+      }
+      else {
+        $faq_mark = 1;
+      }
+
+      if ($faq_mark == 1 && !$flag_faq->is_flagged($cid)) {
+        if ($variables['elements']['#comment']->pid != 0) {
+          if ($flag_faq->is_flagged($variables['elements']['#comment']->pid)) {
+            $variables['faq_filter'] = TRUE;
+          }
+          else {
+            $variables['faq_filter'] = FALSE;
+          }
+        }
+        else {
+          $variables['faq_filter'] = FALSE;
+        }
+      }
+    }
+  }
+
+
+  // Access.
+  $is_editor = FALSE;
+  $editors = field_get_items('node', $variables['node'], 'field_editors');
+  if (!empty($editors)) {
+    foreach ($editors as $editor) {
+      if ($editor['target_id'] == $current_user->uid) {
+        $is_editor = TRUE;
+      }
+      if ($editor['target_id'] == $comment_owner->uid) {
+        $variables['classes_array'][] = 'editor-comment';
+
+        $gender = $comment_owner->field_sex['und'][0]['value'];
+        $role = "\"".str_replace("\r", "",bf_core_get_gender_role('Editor', $gender))."\"";
+        $css = '#comment-wrapper-' . $variables['elements']['#comment']->cid . ' .editor-comment .submitted a:after{content: ' . $role . '}';
+        drupal_add_css(str_replace("\n", "", $css), 'inline');
+      }
+    }
+  }
+  if ($variables['node']->type == 'proposal') {
+    // get phase name.
+    $query = db_select('taxonomy_term_data', 't');
+    $phase = $query
+      ->fields('t', array('name'))
+      ->condition('t.tid', $variables['node']->field_phase[LANGUAGE_NONE][0]['tid'])
+      ->execute()->fetchField();
+
+    if (!in_array('Admin', $current_user->roles) && !in_array('Manager', $current_user->roles)) {
+      if (!$is_editor) {
+        $variables['comment_close'] = FALSE;
+      }
+    }
+
+    switch ($phase) {
+      case 'Preparation':
+        $reply_comment = FALSE;
+        $variables['vote_close'] = TRUE;
+        if (!in_array('Admin', $current_user->roles) && !in_array('Manager', $current_user->roles)) {
+          if (!$is_editor) {
+            $variables['use_complaint'] = FALSE;
+          }
+        }
+        break;
+      case 'Discussion':
+        if (in_array('Expert', $current_user->roles)) {
+          $variables['vote_close'] = TRUE;
+        }
+        break;
+      case 'Voting':
+        $reply_comment = FALSE;
+        break;
+      case 'Result':
+        $reply_comment = FALSE;
+        $variables['vote_close'] = TRUE;
+        break;
+    }
+    unset($variables['content']['links']['comment']['#links']['comment-reply']);
+    unset($variables['content']['links']['flag']['#links']['flag-bf_comment_close']);
+    $variables['content']['links']['comment']['#links']['comment-edit']['title'] = '';
+  }
+
+  $variables['form_reply'] = '';
+  if ($variables['node']->type != 'proposal' && !$reply_comment) {
+    unset($variables['content']['links']['comment']['#links']['comment-reply']);
+  }
+  if ($reply_comment && $variables['node']->type == 'proposal') {
+    // Build form.
+    $form_build = drupal_get_form("comment_node_proposal_form", (object) array(
+      'nid' => $variables['node']->nid,
+      'pid' => $cid
+    ));
+    unset($form_build['actions']['cancel']);
+    $variables['form_reply'] = drupal_render($form_build);
+  }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function bf_comment_form_alter(&$form, $form_state, $form_id) {
+  if (isset($form['author'])) {
+    $form['author']['#access'] = FALSE;
+  }
+
+  if ($form_id == 'comment_node_page_form' || $form_id == 'comment_node_proposal_form') {
+    array_unshift($form['#validate'], 'bf_comment_bf_form_validate');
+    if (empty($form_state['build_info']['args'][0]->pid)) {
+      $form['#submit'][] = 'bf_comment_bf_form_submit';
+      $form['actions']['submit']['#value'] = t('Send question');
+      $form['#attributes'] = array('class' => array('comment-form comment-form-question'));
+      if ($form_id == 'comment_node_proposal_form') {
+        $form['comment_body'][LANGUAGE_NONE][0]['value']['#title'] = t('My question');
+        $form['subject_field'][LANGUAGE_NONE][0]['value']['#title'] = t('Subject');
+        $form['field_comment_image'][LANGUAGE_NONE][0]['#title'] = t('Attach image');
+      }
+    }
+    else {
+      $form['comment_body'][LANGUAGE_NONE][0]['value']['#title'] = t('My answer');
+      $form['#attributes'] = array('class' => array('comment-form comment-form-answer'));
+      $form['field_comment_image']['#access'] = FALSE;
+      $form['subject_field']['#access'] = FALSE;
+      if ($form_id == 'comment_node_proposal_form') {
+        $form['actions']['submit']['#value'] = t('OK');
+        $form['comment_body'][LANGUAGE_NONE][0]['value']['#required'] = TRUE;
+      }
+    }
+
+    $form['actions']['cancel'] = array(
+      '#markup' => l(t('Cancel'), 'bfcomment/cancel', array('attributes' => array('class' => array('use-ajax')))),
+      '#weight' => 20,
+    );
+  }
+}
+
+/**
+ * Implements hook_preprocess_flag().
+ */
+function bf_comment_preprocess_flag(&$variables) {
+  $variables['link_text'] = t($variables['link_text']);
+}
+
+/**
+ * Implements hook_form_submit().
+ */
+function bf_comment_bf_form_submit($form, &$form_state) {
+  variable_set('confirm add comment', TRUE);
+  variable_set('confirm form id', $form['#form_id']);
+  ctools_include('ajax');
+  $command = array();
+  $command[] = ctools_ajax_command_redirect('node/' . $form_state['build_info']['args'][0]->nid);
+  print ajax_render($command);
+  exit;
+}
+
+/**
+ * Implements hook_form_validate().
+ */
+function bf_comment_bf_form_validate($form, &$form_state) {
+  $form_state['values']['language'] = LANGUAGE_NONE;
+}
+
+
+/**
+ * Implements hook_init().
+ */
+function bf_comment_init() {
+  if (variable_get('confirm add comment') == TRUE) {
+    if (variable_get('confirm form id') == 'comment_node_page_form') {
+      drupal_set_message(t('Thank you for your message. After validation will be published'));
+    }
+    variable_set('confirm add comment', FALSE);
+  }
+
+  drupal_add_js(array(
+    'comment-abuse-modal-style' => array(
+      'modalSize' => array(
+        'type'   => 'fixed',
+        'width'  => 500,
+        'height' => 350,
+      ),
+    ),
+  ), 'setting');
+}
+
+/**
+ * Implements hook_form().
+ */
+function bf_comment_faq_exposed_form($form, &$form_state) {
+  if (isset($_SESSION['faq_exposed_form_value'])) {
+    $exposed_value = $_SESSION['faq_exposed_form_value'];
+  }
+  else {
+    $exposed_value = 1;
+    $_SESSION['faq_exposed_form_value'] = 1;
+  }
+  $form['faq_mark'] = array(
+    '#type'          => 'select',
+    '#default_value' => $exposed_value,
+    '#options'       => array(
+      ''  => t('-Any-'),
+      '1' => t('Is Faq')
+    ),
+  );
+  $form['submit'] = array(
+    '#type'  => 'submit',
+    '#value' => t('Apply'),
+  );
+  $form['#submit'][] = 'bf_comment_faq_exposed_form_submit';
+  return $form;
+}
+
+/**
+ * Implements hook_form_submit().
+ */
+function bf_comment_faq_exposed_form_submit($form, &$form_state) {
+  $values = $form_state['values'];
+  if (isset($values['faq_mark'])) {
+    $_SESSION['faq_exposed_form_value'] = $values['faq_mark'];
+  }
+}
+
+
+/**
+ * Implementation of hook_rules_event_info().
+ * @ingroup rules
+ */
+function bf_comment_rules_event_info() {
+  return array(
+    'comment_abuse_created' => array(
+      'label'     => t('Comment abuse created'),
+      'module'    => 'bf_comment',
+      'group'     => t('BF'),
+      'variables' => array(
+        'user_abuse' => array('type' => 'user', 'label' => t('User, who added abuse.')),
+        'comment'    => array('type' => 'comment', 'label' => t('Comment related to abuse.')),
+        'abuse'      => array('type' => 'text', 'label' => t('Abuse text.')),
+        'editors'    => array('type' => 'text', 'label' => t('Comma separated mails of proposal editors text.')),
+      ),
+    ),
+  );
+}
+
+/**
+ * Implements hook_comment_abuse().
+ */
+function bf_comment_comment_abuse($abuse) {
+  // Send email about complaint on comment.
+  if (!empty($abuse)) {
+    if (!empty($abuse->uid) && !empty($abuse->cid)) {
+      $author = user_load($abuse->uid);
+      $comment = comment_load($abuse->cid);
+      $editors_mails = '';
+      if (isset($comment->nid)) {
+        $node = node_load($comment->nid);
+        if ($node) {
+          $field = field_get_items('node', $node, 'field_editors');
+          if (!empty($field)) {
+            foreach ($field as $editor) {
+              $user = user_load($editor['target_id']);
+              if ($editors_mails) {
+                $editors_mails .= ', ';
+              }
+              $editors_mails .= $user->mail;
+            }
+          }
+        }
+      }
+      $text = empty($abuse->message) ? '' : $abuse->message;
+      rules_invoke_event('comment_abuse_created', $author, $comment, $text, $editors_mails);
+    }
+  }
+}
+
+function bf_comment_comment_insert($comment) {
+  if ($comment->pid != 0 && $comment->node_type == 'comment_node_page') {
+    global $user;
+    if (in_array('Admin', $user->roles) || in_array('Manager', $user->roles)) {
+      $flag_approve = flag_get_flag('bf_comment_approve') or die('no "bf_comment_approve" flag defined');
+      $flag_approve->flag('flag', $comment->cid);
+    }
+  }
+
+  if ($comment->pid != 0 && $comment->node_type == 'comment_node_proposal') {
+    $flag_vote = flag_get_flag('bf_comment_vote') or die('no "bf_comment_vote" flag defined');
+    $votes = flag_get_counts('comment', $comment->cid);
+    if (!isset($votes['bf_comment_vote'])) {
+      db_insert('flag_counts')
+        ->fields(
+          array(
+            'fid'          => $flag_vote->fid,
+            'entity_type'  => 'comment',
+            'entity_id'    => $comment->cid,
+            'count'        => 0,
+            'last_updated' => time(),
+          ))
+        ->execute();
+    }
+    $comment->subject = substr($comment->comment_body[LANGUAGE_NONE][0]['value'], 0, 75);
+    comment_save($comment);
+  }
+}
+
+/**
+ * Implements hook_flag_flag().
+ */
+function bf_comment_flag_flag($flag, $entity_id, $account, $flagging) {
+  if ($flag->name == 'bf_comment_faq') {
+    drupal_goto('faq#comment-' . $entity_id);
+  }
+}

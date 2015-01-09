@@ -1,0 +1,9 @@
+name = BF Panels Inline Edit Fields
+description = Allows inline editing
+package = BF
+version = 7.x-0.1
+core = 7.x
+dependencies[] = panels
+dependencies[] = ctools
+
+stylesheets[all][] = bf_pief.css

@@ -1,0 +1,48 @@
+--- a	2014-02-06 17:26:31.000000000 +0200
++++ b	2014-02-06 17:14:14.000000000 +0200
+@@ -746,25 +746,27 @@
+  * Implements hook_node_view().
+  */
+ function rate_node_view($node, $view_mode, $langcode = '') {
+-  if ($view_mode != 'rss') {  
+-    // Adding the form to the node view
+-    $widgets = rate_get_active_widgets('node', $node->type, $view_mode);
+-    foreach ($widgets as $widget_id => $widget) {
+-      $widget_name = 'rate_' . $widget->name;
+-      _rate_check_widget($widget);
+-      $display_mode = $view_mode == 'teaser' ? $widget->teaser_display_mode : $widget->node_display_mode;
+-      $widget_code = array(
+-        '#weight' => $widget->node_display == RATE_DISPLAY_ABOVE_CONTENT ? -50 : 50,
+-        '#markup' => rate_generate_widget($widget_id, 'node', $node->nid, $display_mode),
+-      );
+-      if ($widget->node_display == RATE_DISPLAY_DISABLE) {
+-        $node->$widget_name = $widget_code;
++  if(!empty($node->nid)){
++    if ($view_mode != 'rss') {  
++      // Adding the form to the node view
++      $widgets = rate_get_active_widgets('node', $node->type, $view_mode);
++      foreach ($widgets as $widget_id => $widget) {
++        $widget_name = 'rate_' . $widget->name;
++        _rate_check_widget($widget);
++        $display_mode = $view_mode == 'teaser' ? $widget->teaser_display_mode : $widget->node_display_mode;
++        $widget_code = array(
++          '#weight' => $widget->node_display == RATE_DISPLAY_ABOVE_CONTENT ? -50 : 50,
++          '#markup' => rate_generate_widget($widget_id, 'node', $node->nid, $display_mode),
++        );
++        if ($widget->node_display == RATE_DISPLAY_DISABLE) {
++          $node->$widget_name = $widget_code;
++        }
++        else {
++          $node->content[$widget_name] = $widget_code;
++        }
+       }
+-      else {
+-        $node->content[$widget_name] = $widget_code;
+-      }
+-    
+-  }}
++    }
++  }
+ }
+ 
+ /**

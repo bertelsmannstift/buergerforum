@@ -1,0 +1,14 @@
+; $Id$
+name = BF core
+description = Create content types for panels with widgets for document statistics & etc.
+core = 7.x
+package = BF
+version = 7.x-1.0
+
+dependencies[] = ctools
+dependencies[] = panels
+
+; Views Handlers
+files[] = views/handlers/views_handler_field_translate_role.inc
+files[] = views/handlers/views_handler_argument_translate_role_rid.inc
+files[] = views/handlers/views_handler_filter_translate_role.inc

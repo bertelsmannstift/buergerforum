@@ -1,0 +1,4 @@
+name = BF eTracker
+description = Integrate with eTracker, webcontrolling and real time web analysis.
+package = BF
+core = 7.x

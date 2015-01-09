@@ -1,0 +1,118 @@
+.pief {
+position: relative;
+}
+
+.pief .pief-field-toolbar {
+display: none;
+display: block;
+position: absolute;
+right: 10px;
+top: 10px;
+z-index: 100;
+}
+
+.pief-field-output h1 {
+padding-bottom: 20px;
+}
+
+.pief-field-editor #edit-field-motivation-und-0-format, .pief-field-editor #edit-field-details-und-0-format,
+.pief-field-editor #edit-field-pro-contra-und-0-format, .pief-field-editor #edit-field-implementation-und-0-format,
+.pief-field-editor #edit-log-wrapper, .form-item-revision, .form-item-log {
+display: none;
+}
+
+.page-admin .views-table .views-field-language {
+display: none;
+}
+
+.pief-edit-link, .pief-edit-link:hover, .pief-edit-link:active, .pief-edit-link:visited, .pief-edit-link:focus {
+background-color:#CCCCCC;
+color:#ffffff;
+cursor:pointer;
+display:block;
+padding:5px;
+text-decoration:none;
+}
+
+.pief-edit-link:before {
+    color: #ffffff;
+    content: "";
+    font-family: FontAwesome;
+    font-weight: normal;
+    margin-right: 3px;
+}
+
+.pief .field-name-field-intro {
+padding-top:40px;
+}
+
+.pief .pief-edit-link-field_intro {
+top:0;
+}
+
+.pief .text-format-wrapper label {
+line-height: 125%;
+margin: 10px 0;
+font-family: 'droid_serifregular';
+font-style: normal;
+font-weight: 700;
+color: #444444;
+font-size: 22px;
+padding: 20px 0 0;
+}
+
+.pief .field-name-field-intro label {
+display:none;
+}
+
+.pief-field-empty {
+  border: 1px solid #444444;
+  margin-bottom: 40px;
+  padding: 15px;
+}
+
+.pief {
+border:1px dashed #cecece;
+padding:10px 0;
+}
+
+
+.pief.pief-field-empty-entity-field .pief-edit-link-field_intro, .pief.pief-field-empty-entity-field .pief-edit-link-field_image {
+margin-top:-5px;
+}
+
+.pief_field_empty {
+font-style: italic;
+color:#999999;
+}
+
+.pief #edit-field-image label {
+display:none;
+}
+
+.pane-node-form-publishing .form-item-promote, .pane-node-form-publishing .form-item-sticky {
+  display: none;
+}
+
+.pief .pief-field-output {
+display:inline-block;
+width:100%;
+}
+
+.pief-field-editor #edit-title {
+width:100%;
+}
+
+.proposal-editor .cke_button__image, .proposal-editor .cke_button__mediaembed,
+.proposal-editor .cke_button__link, .proposal-editor .cke_button__unlink,
+.proposal-editor .cke_button__bold, .proposal-editor .cke_button__italic,
+.proposal-editor .cke_button__underline {
+  display: none;
+}
+
+form[rel="proposal-editor"] .cke_button__image, form[rel="proposal-editor"] .cke_button__mediaembed,
+form[rel="proposal-editor"] .cke_button__link, form[rel="proposal-editor"] .cke_button__unlink,
+form[rel="proposal-editor"] .cke_button__bold, form[rel="proposal-editor"] .cke_button__italic,
+form[rel="proposal-editor"] .cke_button__underline {
+  display: none;
+}

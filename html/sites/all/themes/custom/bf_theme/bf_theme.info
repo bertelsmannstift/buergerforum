@@ -1,0 +1,21 @@
+name = BF
+description = An Burgen Forum theme based on OA Radix
+;screenshot  = screenshot.png
+core = 7.x
+
+; Base - Radix
+base theme = radix
+
+; Panels layouts. You can place multiple layouts under the "layouts" folder.
+plugins[panels][layouts] = layouts
+
+; Regions
+;regions[help]      = Help
+regions[header]  = Header
+regions[content] = Content
+regions[footer]  = Footer
+
+stylesheets[all][] = assets/stylesheets/custom.css
+stylesheets[all][] = assets/stylesheets/font-awesome.css
+stylesheets[all][] = assets/stylesheets/bf.css
+stylesheets[print][] = assets/stylesheets/bf-print.css

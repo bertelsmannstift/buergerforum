@@ -1,0 +1,167 @@
+<?php
+/**
+ * @file
+ *
+ * Create CTools content type for panels .
+ */
+
+include_once 'bf_user_profile.theme.inc';
+
+/**
+ * Implements hook_menu().
+ */
+function bf_user_profile_menu() {
+  $items['admin/users/add-field-settings'] = array(
+    'title'            => 'Additional fields setting',
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('bf_user_profile_addfield_settings_form'),
+    'access arguments' => array('access administration pages'),
+    'type'             => MENU_SUGGESTED_ITEM,
+  );
+
+  return $items;
+}
+
+
+/**
+ * Additional fields setting page callback.
+ */
+function bf_user_profile_addfield_settings_form($form, &$form_state) {
+  $form['user_field_phone'] = array(
+    '#type' => 'select',
+    '#title' => t('User phone'),
+    '#default_value' => variable_get('additional_user_field_phone', FALSE),
+    '#options' => array(
+      FALSE => t('No'),
+      TRUE => t('Yes'),
+    ),
+  );
+  $form['user_field_title'] = array(
+    '#type' => 'select',
+    '#title' => t('User title'),
+    '#default_value' => variable_get('additional_user_field_title', FALSE),
+    '#options' => array(
+      FALSE => t('No'),
+      TRUE => t('Yes'),
+    ),
+  );
+  $form['user_field_education'] = array(
+    '#type' => 'select',
+    '#title' => t('User education'),
+    '#default_value' => variable_get('additional_user_field_education', FALSE),
+    '#options' => array(
+      FALSE => t('No'),
+      TRUE => t('Yes'),
+    ),
+  );
+  $form['user_field_sphere_of_activity'] = array(
+    '#type' => 'select',
+    '#title' => t('User sphere of activity'),
+    '#default_value' => variable_get('additional_user_field_sphere_of_activity', FALSE),
+    '#options' => array(
+      FALSE => t('No'),
+      TRUE => t('Yes'),
+    ),
+  );
+  $form['user_field_website'] = array(
+    '#type' => 'select',
+    '#title' => t('User website'),
+    '#default_value' => variable_get('additional_user_field_website', FALSE),
+    '#options' => array(
+      FALSE => t('No'),
+      TRUE => t('Yes'),
+    ),
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Apply'),
+  );
+  $form['#submit'][] = 'bf_user_profile_addfield_settings_form_submit';
+  return $form;
+}
+
+/**
+ * Implements hook_form_submit().
+ */
+function bf_user_profile_addfield_settings_form_submit($form, &$form_state) {
+  $values = $form_state['values'];
+  variable_set('additional_user_field_phone', $values['user_field_phone']);
+  variable_set('additional_user_field_title', $values['user_field_title']);
+  variable_set('additional_user_field_education', $values['user_field_education']);
+  variable_set('additional_user_field_sphere_of_activity', $values['user_field_sphere_of_activity']);
+  variable_set('additional_user_field_website', $values['user_field_website']);
+}
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function bf_user_profile_ctools_plugin_directory($owner, $plugin_type) {
+  if ($owner == 'ctools' && $plugin_type == 'content_types') {
+    return 'plugins/content_types';
+  }
+}
+
+/**
+ * Implementation of hook_form_FORM_ID_alter.
+ */
+function bf_user_profile_form_user_profile_form_alter(&$form, &$form_state, $form_id) {
+  global $user;
+
+  if(!in_array('Admin', $user->roles) && $user->uid != 1 && !in_array('Manager', $user->roles)){
+    $form['field_committee']['#access'] = false;
+    $form['field_field_of_interest'] = false;
+    $form['extparam']= false;
+    $form['field_invite']['#access'] = false;
+    if ($form['#groups']['group_extparam']) {
+      foreach ($form['#groups']['group_extparam']->children as $field) {
+        hide($form[$field]);
+      }
+    }
+    $form['#groups']['group_extparam']->label='';
+  } elseif (isset($form['field_invite']['und'])) {
+    $form['field_invite']['und']['#access'] = false;
+    $getInviteParam = $form['field_invite']['und']['#default_value']?$form['field_invite']['und']['#options'][$form
+    ['field_invite']['und']['#default_value']]:t('No');
+    $form['field_invite']['#prefix']=t('Invite: @invite',
+      array(
+        '@invite'=>$getInviteParam
+      )
+    );
+  }
+  if (in_array('Manager', $user->roles)) {
+    $form['field_field_of_interest'] = false;
+  }
+  $user_phone = variable_get('additional_user_field_phone', FALSE);
+  $user_title = variable_get('additional_user_field_title', FALSE);
+  $user_education = variable_get('additional_user_field_education', FALSE);
+  $user_sphere_of_activity = variable_get('additional_user_field_sphere_of_activity', FALSE);
+  $user_website = variable_get('additional_user_field_website', FALSE);
+  $form['field_phone']['#access'] = $user_phone;
+  $form['field_user_title']['#access'] = $user_title;
+  $form['field_user_education']['#access'] = $user_education;
+  $form['field_sphere_of_activity']['#access'] = $user_sphere_of_activity;
+  $form['field_user_website']['#access'] = $user_website;
+  if (!$user_phone && !$user_title && !$user_education && !$user_sphere_of_activity && !$user_website) {
+    $form['group_additional_params']['#access'] = FALSE;
+  }
+}
+
+function bf_user_profile_form_user_register_form_alter(&$form, &$form_state, $form_id) {
+  global $user;
+  if (in_array('Admin', $user->roles) || in_array('Manager', $user->roles)){
+    $form['field_committee']['#access'] = TRUE;
+    $user_phone = variable_get('additional_user_field_phone', FALSE);
+    $user_title = variable_get('additional_user_field_title', FALSE);
+    $user_education = variable_get('additional_user_field_education', FALSE);
+    $user_sphere_of_activity = variable_get('additional_user_field_sphere_of_activity', FALSE);
+    $user_website = variable_get('additional_user_field_website', FALSE);
+    $form['field_phone']['#access'] = $user_phone;
+    $form['field_user_title']['#access'] = $user_title;
+    $form['field_user_education']['#access'] = $user_education;
+    $form['field_sphere_of_activity']['#access'] = $user_sphere_of_activity;
+    $form['field_user_website']['#access'] = $user_website;
+    if (!$user_phone && !$user_title && !$user_education && !$user_sphere_of_activity && !$user_website) {
+      $form['group_additional_params']['#access'] = FALSE;
+    }
+  }
+}

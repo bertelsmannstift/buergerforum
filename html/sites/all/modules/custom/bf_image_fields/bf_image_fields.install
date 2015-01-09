@@ -1,0 +1,300 @@
+<?php
+
+/**
+ * Implements hook_schema().
+ */
+function bf_image_fields_schema() {
+  $schema['field_image_field_caption'] = array(
+    'description' => 'The base table for the image_field_caption module.',
+    'fields' => array(
+      'field_name' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => ''
+      ),
+      'entity_type' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The entity type this data is attached to',
+      ),
+      'bundle' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The field instance bundle to which this row belongs, used when deleting a field instance',
+      ),
+      'entity_id' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'The entity id this data is attached to',
+      ),
+      'revision_id' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+        'description' => 'The entity revision id this data is attached to, or NULL if the entity type is not versioned',
+      ),
+      // @todo Consider storing language as integer.
+      'language' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The language for this data item.',
+      ),
+      'delta' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'The sequence number for this data item, used for multi-value fields',
+      ),
+      'caption' => array(
+        'description' => 'The caption text.',
+        'type' => 'text',
+        'not null' => FALSE,
+      ),
+      'caption_url' => array(
+        'description' => 'The caption url.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('field_name', 'entity_type', 'entity_id', 'delta', 'language'),
+    'indexes' => array(
+      'entity_type' => array('entity_type'),
+      'bundle' => array('bundle'),
+      'entity_id' => array('entity_id'),
+      'revision_id' => array('revision_id'),
+      'language' => array('language'),
+    ),
+  );
+
+  $schema['field_image_field_caption_revision'] = array(
+    'description' => 'The base table for the image_field_caption module.',
+    'fields' => array(
+      'field_name' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => ''
+      ),
+      'entity_type' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The entity type this data is attached to',
+      ),
+      'bundle' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The field instance bundle to which this row belongs, used when deleting a field instance',
+      ),
+      'entity_id' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'The entity id this data is attached to',
+      ),
+      'revision_id' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'The entity revision id this data is attached to',
+      ),
+      // @todo Consider storing language as integer.
+      'language' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The language for this data item.',
+      ),
+      'delta' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'The sequence number for this data item, used for multi-value fields',
+      ),
+      'caption' => array(
+        'description' => 'The caption text.',
+        'type' => 'text',
+        'not null' => FALSE,
+      ),
+      'caption_url' => array(
+        'description' => 'The caption url.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('field_name', 'entity_type', 'entity_id', 'revision_id', 'delta', 'language'),
+    'indexes' => array(
+      'entity_type' => array('entity_type'),
+      'bundle' => array('bundle'),
+      'entity_id' => array('entity_id'),
+      'revision_id' => array('revision_id'),
+      'language' => array('language'),
+    ),
+  );
+
+  return $schema;
+}
+
+/**
+ * Creates new schema
+ */
+function bf_image_fields_enable() {
+  $schema['field_image_field_caption'] = array(
+    'description' => 'The base table for the image_field_caption module.',
+    'fields' => array(
+      'field_name' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => ''
+      ),
+      'entity_type' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The entity type this data is attached to',
+      ),
+      'bundle' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The field instance bundle to which this row belongs, used when deleting a field instance',
+      ),
+      'entity_id' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'The entity id this data is attached to',
+      ),
+      'revision_id' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+        'description' => 'The entity revision id this data is attached to, or NULL if the entity type is not versioned',
+      ),
+      'language' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The language for this data item.',
+      ),
+      'delta' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'The sequence number for this data item, used for multi-value fields',
+      ),
+      'caption' => array(
+        'description' => 'The caption text.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+      'caption_url' => array(
+        'description' => 'The caption url.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('field_name', 'entity_type', 'entity_id', 'delta', 'language'),
+    'indexes' => array(
+      'entity_type' => array('entity_type'),
+      'bundle' => array('bundle'),
+      'entity_id' => array('entity_id'),
+      'revision_id' => array('revision_id'),
+      'language' => array('language'),
+    ),
+  );
+
+  $schema['field_image_field_caption_revision'] = array(
+    'description' => 'The base table for the image_field_caption module.',
+    'fields' => array(
+      'field_name' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => ''
+      ),
+      'entity_type' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The entity type this data is attached to',
+      ),
+      'bundle' => array(
+        'type' => 'varchar',
+        'length' => 128,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The field instance bundle to which this row belongs, used when deleting a field instance',
+      ),
+      'entity_id' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'The entity id this data is attached to',
+      ),
+      'revision_id' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'The entity revision id this data is attached to',
+      ),
+      'language' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => 'The language for this data item.',
+      ),
+      'delta' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'The sequence number for this data item, used for multi-value fields',
+      ),
+      'caption' => array(
+        'description' => 'The caption text.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+      'caption_url' => array(
+        'description' => 'The caption url.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => FALSE,
+      ),
+    ),
+    'primary key' => array('field_name', 'entity_type', 'entity_id', 'revision_id', 'delta', 'language'),
+    'indexes' => array(
+      'entity_type' => array('entity_type'),
+      'bundle' => array('bundle'),
+      'entity_id' => array('entity_id'),
+      'revision_id' => array('revision_id'),
+      'language' => array('language'),
+    ),
+  );
+
+  db_create_table('field_image_field_caption', $schema['field_image_field_caption']);
+  db_create_table('field_image_field_caption_revision', $schema['field_image_field_caption_revision']);
+}

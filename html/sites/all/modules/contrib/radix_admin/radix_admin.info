@@ -1,0 +1,10 @@
+name = Radix Admin
+description = Provides administration enhancements, based on Radix theme
+core = 7.x
+
+; Information added by drupal.org packaging script on 2013-10-01
+version = "7.x-1.x-dev"
+core = "7.x"
+project = "radix_admin"
+datestamp = "1380624789"
+

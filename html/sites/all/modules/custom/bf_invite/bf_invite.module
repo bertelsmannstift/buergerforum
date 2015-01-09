@@ -1,0 +1,305 @@
+<?php
+
+/**
+ * @file
+ *
+ * BF Invite.
+ */
+
+define('BF_INVITE_SECRET_CODE', '234et');
+define('BF_INVITE_LINK_TOKEN', '@reglink');
+define('BF_REF_COOKIE_LIFE_DAYS', 365);
+
+
+/**
+ * Implementation of hook_init().
+*/
+function bf_invite_init() {
+  if(isset($_GET['ref']) && strlen($_GET['ref']) > 4){
+    setcookie('br_ref', $_GET['ref'], time() + 3600 * 24 * BF_REF_COOKIE_LIFE_DAYS, '/');
+    drupal_goto('user/register');
+  }
+}
+
+/**
+ * Implementation of hook_menu().
+ */
+function bf_invite_menu() {
+  $items = array();
+  $items['admin/config/messaging/bf_invite'] = array(
+      'title' => 'BF Invite settings',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('bf_invite_admin_settings'),
+      'description' => t('Parameters of BF Invite module'),
+      'access arguments' => array('administer site configuration')
+  );
+  return $items;
+}
+
+/**
+ * Settings form.
+ */
+function bf_invite_admin_settings() {
+  $form['bf_invite_upload_file'] = array(
+      '#type' => 'managed_file',
+      '#title' => t('Upload CSV file'),
+      '#description' => t('Uploading CSV file'),
+      '#upload_validators' => array(
+          'file_validate_extensions' => array('csv')
+      ),
+      '#upload_location' => 'public://csv/',
+  );
+
+  $unsent = bf_invite_get_unsent_message_count();
+
+  $form['bf_invite_unsent_message_count'] = array(
+      '#markup' => t('@cnt unsent messages in database.', array('@cnt'=>$unsent))
+  );
+
+  $form['bf_invite_mail_mail'] = array(
+    '#type' => 'textfield',
+    '#size' => 60,
+    '#maxlength' => 256,
+    '#required' => FALSE,
+    '#title' => t('Mail registration for one user'),
+  );
+
+  $form['bf_invite_mail_subject'] = array(
+      '#type' => 'textfield',
+      '#size' => 60,
+      '#maxlength' => 256,
+      '#required' => TRUE,
+      '#title' => t('Invitation message subject'),
+      '#default_value' => variable_get('bf_invite_mail_subject', '')
+  );
+
+  $form['bf_invite_mail_body'] = array(
+      '#type' => 'textarea',
+      '#description' => t('Use token "@reglink" as registration link.', array('@reglink', BF_INVITE_LINK_TOKEN)),
+      '#required' => TRUE,
+      '#title' => t('Invitation message body'),
+      '#default_value' => variable_get('bf_invite_mail_body', '')
+  );
+
+  $form['#submit'][] = 'bf_invite_process_uploaded_file';
+  $form['#validate'][] = 'bf_invite_validate_uploaded_file';
+
+  $form = system_settings_form($form);
+
+  $form['actions']['submit']['#value'] = t('OK');
+
+  return $form;
+}
+
+/**
+ * Additional validator for settings form.
+ */
+function bf_invite_validate_uploaded_file($form, &$form_state) {
+  if (!isset($form_state['values']['bf_invite_upload_file']) || !is_numeric($form_state['values']['bf_invite_upload_file'])) {
+    form_set_error('bf_invite_upload_file', t('Please select a file to upload.'));
+  }
+}
+
+/**
+ * Additional submit handler for settings form.
+ */
+function bf_invite_process_uploaded_file($form, &$form_state) {
+  if ($form_state['values']['bf_invite_upload_file'] != 0) {
+
+    $file = file_load($form_state['values']['bf_invite_upload_file']);
+    $file->status = FILE_STATUS_PERMANENT;
+    file_save($file);
+    if(!empty($file->uri)){
+      if(file_exists(drupal_realpath($file->uri))) {
+        // Open the csv
+        $handle = fopen(drupal_realpath($file->uri), "r");
+        if($handle !== false){
+          $cnt = 0;
+          while (($data = fgetcsv($handle, 255, ",")) !== false) {
+            if(!empty($data[0])){
+              if(bf_ivite_import_item($data[0])){
+                $cnt ++;
+              }
+            }
+          }
+          fclose($handle);
+          drupal_set_message(t('@cnt e-mails were successfully imported.', array('@cnt'=>$cnt)));
+        }
+      }
+
+    }
+  }
+  if (!empty($form_state['values']['bf_invite_mail_mail'])) {
+    if (bf_ivite_import_item($form_state['values']['bf_invite_mail_mail'])) {
+      $cnt = 1;
+    } else {
+      $cnt = 0;
+    }
+    drupal_set_message(t('@cnt e-mail were successfully imported.', array('@cnt'=>$cnt)));
+  }
+}
+
+/**
+ * Import one item (email).
+ */
+function bf_ivite_import_item($email){
+
+  //if not exist registered email in site
+  $usermail_exist = db_select('users', 'i')
+    ->fields('i')
+    ->condition('i.mail', $email)
+    ->execute()
+    ->fetchObject();
+  if(empty($usermail_exist)) {
+    $id = db_insert('bf_invite')
+    ->fields(
+        array(
+            'email' => $email,
+            'code' => bf_ivite_build_code($email),
+            'status' => 0
+        ))
+        ->execute();
+    return true;
+  }else{
+    return false;
+  }
+}
+
+
+/**
+ * Implements hook_cron().
+ */
+function bf_invite_cron() {
+  $queue = DrupalQueue::get('bf_invite_queue');
+
+  $query = db_select('bf_invite', 'i')
+  ->fields('i')
+  ->condition('i.status', '0')
+  ->execute();
+  $cnt = 0;
+  foreach ($query as $item){
+    $queue->createItem($item);
+    $cnt ++;
+  }
+  if($cnt){
+    drupal_set_message(t('@cnt messages were prepared for sending.', array('@cnt' => $cnt)));
+  }
+}
+
+/**
+ * Implements hook_cron_queue_info().
+ */
+function bf_invite_cron_queue_info() {
+  $queues = array();
+  $queues['bf_invite_queue'] = array(
+      'worker callback' => 'bf_invite_send_invite', //function to call for each item
+      'time' => 60, //seconds to spend working on the queue
+  );
+  return $queues;
+}
+
+/**
+ * Send invitation mail.
+ */
+function bf_invite_send_invite($item) {
+ // global $language;
+  if(!empty($item->email)){
+
+    //mark item as sent
+    db_update('bf_invite')
+    ->fields(array('status' => 1,'date_send' => REQUEST_TIME))
+    ->condition('iid', $item->iid)
+    ->execute();
+
+    //send mail
+    $link = l(url('user/register',array('absolute' => true)), 'user/register', array('query'=>array('ref'=>$item->code), 'absolute' => true));
+
+    $body = variable_get('bf_invite_mail_body', '');
+    $body = str_replace(BF_INVITE_LINK_TOKEN, $link, $body);
+
+    $language = language_default();
+    $params = array(
+      'context' => array(
+        'subject' => variable_get('bf_invite_mail_subject'),
+        'message' => $body,
+      ),
+    );
+    drupal_mail('system', 'mail', $item->email, $language, $params);
+
+    return true;
+  } else {
+    return false;
+  }
+}
+
+/**
+ * Build reference code.
+ */
+function bf_ivite_build_code($email){
+  $ref = md5($email.BF_INVITE_SECRET_CODE);
+  return $ref;
+}
+
+/**
+ * Get unsent message count in DB.
+ */
+function bf_invite_get_unsent_message_count(){
+  $count = db_select('bf_invite')
+  ->condition('status', 0)
+  ->countQuery()
+  ->execute()
+  ->fetchField();
+  return $count;
+}
+
+/**
+ * Check code in DB.
+ */
+function bf_invite_check_code($code, $status=1){
+  $check = db_select('bf_invite')
+    ->condition('status', $status)
+    ->condition('code', $code)
+    ->countQuery()
+    ->execute()
+    ->fetchField();
+  return $check;
+}
+
+/**
+ * Deactivate status code.
+ */
+function bf_invite_deactivate_status($code){
+  db_update('bf_invite')
+    ->fields(array('status' => 0))
+    ->condition('code', $code)
+    ->execute();
+  return true;
+}
+
+/**
+ * Remove code.
+ */
+function bf_invite_remove_code($code){
+  db_delete('bf_invite')
+    ->condition('code', $code)
+    ->execute();
+  return true;
+}
+
+/**
+ * check exists duplicate email invite
+ */
+function bf_invite_check_duplicate_email($email,$role='Participant') {
+  $query = db_select('field_data_field_invite', 'f');
+  $query->leftJoin('users', 'u', 'f.entity_id = u.uid');
+  $query->leftJoin('users_roles', 'ur', 'f.entity_id = ur.uid');
+  $query->leftJoin('role', 'r', 'ur.rid = r.rid');
+  $query->condition('f.field_invite_value', 1);
+  $query->condition('entity_type', 'user');
+  $query->condition('u.name', $email);
+  $query->condition('r.name', $role);
+  $result = $query->countQuery()
+    ->execute()
+    ->fetchField();
+  return $result;
+}

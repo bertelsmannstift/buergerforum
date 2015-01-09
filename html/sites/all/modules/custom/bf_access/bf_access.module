@@ -1,0 +1,245 @@
+<?php
+module_load_include('inc','bf_register_form','bf_register_form.admin');
+
+/**
+ * Implements hook_menu_alter().
+ */
+function bf_access_menu_alter(&$items) {
+  $items['node/%node/edit']['access callback'] = 'bf_access_access_check';
+  $items['admin/config/people/accounts/fields']['access callback'] = 'bf_access_admin_check';
+  $items['admin/config/people/accounts/display']['access callback'] = 'bf_access_admin_check';
+  $items['admin/content/comment/approval']['access callback'] = FALSE;
+}
+
+/**
+ * Implements hook_menu().
+ */
+function bf_access_menu() {
+  $items['admin/content-view/tasks'] = array(
+    'title'           => t('Administration'),
+    'weight'          => 9,
+    'access callback' => 'bf_access_admin_menu_access_check',
+    'type'            => MENU_NORMAL_ITEM,
+    'menu_name'       => 'main-menu',
+  );
+
+  $items['statistics/registration-statistics'] = array(
+    'title'           => t('Registration statistics'),
+    'type'            => MENU_NORMAL_ITEM,
+    'menu_name'       => 'main-menu',
+    'page callback'    => array('bf_register_form_statistics'),
+    'access callback' => 'bf_access_project_coordinator_access_check',
+  );
+
+  return $items;
+}
+/*
+ * Handler menu item (statistics/registration-statistics).
+ */
+function bf_access_register_form_statistics() {
+  return bf_register_form_statistics();
+}
+
+/**
+ * Implements bf_access_admin_check().
+ */
+function bf_access_admin_check() {
+  global $user;
+  if (in_array('Admin', $user->roles)) {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+ * Implements bf_access_access_check().
+ */
+
+function bf_access_admin_menu_access_check() {
+  global $user;
+  if (in_array('Admin', $user->roles) || in_array('Manager', $user->roles)) {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+function bf_access_project_coordinator_access_check() {
+  global $user;
+  $current_user = user_load($user->uid);
+  if (in_array('Project coordinator', $current_user->roles)) {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/**
+ * Implements bf_access_access_check().
+ */
+
+function bf_access_access_check($op, $node) {
+  global $user;
+  if (in_array('Admin', $user->roles) || in_array('Manager', $user->roles)) {
+    return TRUE;
+  }
+
+  if ($node->type == 'proposal') {
+    // get phase name.
+    $query = db_select('taxonomy_term_data', 't');
+    $phase = $query
+      ->fields('t', array('name'))
+      ->condition('t.tid', $node->field_phase[LANGUAGE_NONE][0]['tid'])
+      ->execute()->fetchField();
+    if ($phase == 'Voting' || $phase == 'Result') {
+      return FALSE;
+    }
+  }
+
+  $editors = field_get_items('node', $node, 'field_editors');
+  if(!empty($editors)){
+    foreach ( $editors as $editor ) {
+      if ($editor['target_id'] == $user->uid) {
+        return TRUE;
+      }
+    }
+  }
+  return FALSE;
+}
+
+/**
+ * Implements hook_form_alter().
+ *
+ */
+function bf_core_form_proposal_node_form_alter(&$form, &$form_state, $form_id) {
+  global $user;
+  if (!in_array('Admin', $user->roles) && !in_array('Manager', $user->roles)) {
+    $form['field_editors']['#access'] = FALSE;
+    $form['field_phase']['#access'] = FALSE;
+    $form['field_phase_end']['#access'] = FALSE;
+    $form['field_committee']['#access'] = FALSE;
+  }
+ // $form['title']['#access'] = TRUE;
+}
+
+/**
+ * Implementation of hook_form_FORM_ID_alter.
+ */
+function bf_access_form_simplenews_admin_category_form_alter(&$form, &$form_state, $form_id) {
+  $form['subscription']['#access'] = false;
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function bf_access_form_taxonomy_form_term_alter(&$form, &$form_state, $form_id) {
+  $form['relations']['#access'] = FALSE;
+  $form['#after_build'][] = 'bf_access_taxonomy_after_build';
+}
+
+/**
+ * Taxonomy form after build.
+ */
+function bf_access_taxonomy_after_build($form, &$form_state) {
+  $form['path']['#access'] = FALSE;
+  return ($form);
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function bf_access_form_page_node_form_alter(&$form, &$form_state, $form_id) {
+  if ($form['title']['#default_value'] != 'FAQ' && $form['title']['#default_value'] != 'Complaints and suggestions') {
+    $form['comment_settings']['#access'] = FALSE;
+  }
+  $form['language']['#access'] = FALSE;
+  $form['field_page_type']['#access'] = FALSE;
+  $form['actions']['delete']['#access'] = FALSE;
+  $form['menu']['#access'] = FALSE;
+  $form['#after_build'][] = 'bf_access_page_node_form_after_build';
+}
+
+/**
+ * Taxonomy form after build.
+ */
+function bf_access_page_node_form_after_build($form, &$form_state) {
+  global $user;
+  if (!in_array('Admin', $user->roles)) {
+    $form['path']['#access'] = FALSE;
+  }
+  return ($form);
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function bf_access_form_user_admin_settings_alter(&$form, &$form_state, $form_id) {
+  global $user;
+  $form['anonymous_settings']['#access'] = FALSE;
+  $form['admin_role']['#access'] = FALSE;
+  if (!in_array('Admin', $user->roles)) {
+    $form['registration_cancellation']['#access'] = FALSE;
+    $form['personalization']['#access'] = FALSE;
+  }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function bf_access_form_info_article_node_form_alter(&$form, &$form_state, $form_id) {
+  $form['#after_build'][] = 'bf_access_info_article_node_form_after_build';
+}
+
+/**
+ * Taxonomy form after build.
+ */
+function bf_access_info_article_node_form_after_build($form, &$form_state) {
+ $form['actions']['preview_changes']['#access'] = FALSE;
+  return ($form);
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function bf_access_form_user_profile_form_alter(&$form, &$form_state, $form_id) {
+  $form['#after_build'][] = 'bf_access_user_profile_form_after_build';
+}
+
+/**
+ * User profile form after build.
+ */
+function bf_access_user_profile_form_after_build($form, &$form_state) {
+  if (isset($form['privatemsg'])) {
+    $form['privatemsg']['#collapsible'] = FALSE;
+    unset($form['privatemsg']['#attributes']['class'][0]);
+  }
+  if (isset($form['timezone'])) {
+    $form['timezone']['#collapsible'] = FALSE;
+    unset($form['timezone']['#attributes']['class'][0]);
+  }
+
+  return ($form);
+}
+/**
+ * Implementation of hook_form_FORM_ID_alter.
+ */
+function bf_access_form_user_login_alter(&$form, &$form_state, $form_id)
+{
+    // Add links as needed.
+    if (variable_get('modal_forms_login_links', 0)) {
+      $items = array();
+      // Add standard links.
+      if (variable_get('modal_forms_login_links', 0) == 1) {
+        if (variable_get('user_register', USER_REGISTER_VISITORS_ADMINISTRATIVE_APPROVAL)) {
+          $items[] = l(t('Create new account?'), 'user/register', array('attributes' => array('title' => t('Create a new user account.'))));
+        }
+        $items[] = l(t('Request new password'), 'user/password', array('attributes' => array('title' => t('Request new password via e-mail.'))));
+      }
+      // Add links that opens in a modal_forms.
+      if (variable_get('modal_forms_login_links', 0) == 2) {
+        if (variable_get('user_register', USER_REGISTER_VISITORS_ADMINISTRATIVE_APPROVAL)) {
+          $items[] = ctools_modal_text_button(t('Create new account?'), 'modal_forms/nojs/register', t('Create a new user account'), 'ctools-modal-modal-popup-medium');
+        }
+        $items[] = ctools_modal_text_button(t('Request new password'), 'modal_forms/nojs/password', t('Request new password via e-mail.'), 'ctools-modal-modal-popup-small');
+      }
+      $form['links'] = array('#markup' => theme('item_list', array('items' => $items)));
+    }
+}

@@ -1,0 +1,10 @@
+name = BF comments
+description = Create functional for comments & etc.
+core = 7.x
+package = BF
+version = 7.x-1.0
+
+scripts[] = js/image-collapse.js
+
+dependencies[] = ctools
+dependencies[] = panels

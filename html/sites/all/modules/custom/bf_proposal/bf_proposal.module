@@ -1,0 +1,369 @@
+<?php
+/**
+ * @file
+ *
+ * Create CTools content type for panels .
+ */
+
+define('REFERENCE_DIALOG_SEARCH',t('Search'));
+define('REFERENCE_DIALOG_SEARCH_REPLACE',t('Select editor'));
+define('REFERENCE_DIALOG_EDIT',t('Edit'));
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function bf_proposal_ctools_plugin_directory($owner, $plugin_type) {
+  if ($owner == 'ctools' && $plugin_type == 'content_types') {
+    return 'plugins/content_types';
+  }
+}
+
+
+/**
+ * Implements hook_permission().
+ */
+function bf_proposal_permission() {
+  return array(
+      'become editor' => array(
+          'title' => t('Become editor'),
+      ),      
+      'stop editor' => array(
+          'title' => t('Stop being editor'),
+      ),
+  );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function bf_proposal_menu(){
+  $items = array();
+  $items['node/%node/become_editor'] = array(
+      'title' => '',
+      'page callback' => 'bf_proposal_become_editor',
+      'page arguments' => array(1),
+      'access callback' => TRUE,
+      'access arguments' => array('become editor', 1),
+      'type' => MENU_CALLBACK,
+  );
+  $items['node/%node/stop_editor'] = array(
+      'title' => '',
+      'page callback' => 'bf_proposal_stop_editor',
+      'page arguments' => array(1),
+      'access callback' => TRUE,
+      'access arguments' => array('stop editor', 1),
+      'type' => MENU_CALLBACK,
+  );
+  $items['admin/config/content/bf_proposal'] = array(
+      'title' => 'BF Proposal settings',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('bf_proposal_admin_settings'),
+      'description' => t('Parameters of BF Proposal module'),
+      'access arguments' => array('registration_settings'),
+  );
+  return $items;
+}
+
+/**
+ * Settings form.
+ */
+function bf_proposal_admin_settings() {
+  
+  $form['bf_proposal_can_become_editor'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Check if user with specified permissions can become an editor.'),
+      '#default_value' => variable_get('bf_proposal_can_become_editor', 0)
+  );
+  
+  $form['bf_proposal_can_stop_editor'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Check if user with specified permissions can stop being editor.'),
+      '#default_value' => variable_get('bf_proposal_can_stop_editor', 0)
+  );
+
+  return system_settings_form($form);
+}
+
+/**
+ * Callback handler for menu item (node/%node/become_editor).
+ */
+function bf_proposal_become_editor($node){
+  global $user;
+  if(isset($node) && $node->type == 'proposal' && 
+    bf_proposal_check_user_committee($user->uid, $node) &&
+    variable_get('bf_proposal_can_become_editor', 0) == 1){
+    $next_item = 0;
+    if(!empty($node->field_editors[LANGUAGE_NONE]) && is_array($node->field_editors[LANGUAGE_NONE])){
+      $next_item = count($node->field_editors[LANGUAGE_NONE]);      
+    }
+    //can add only if less than 2 editors attached
+    if($next_item < 2){
+      $node->field_editors[LANGUAGE_NONE][$next_item + 1]['target_id'] = $user->uid;
+      node_submit($node);
+      node_save($node);
+      bf_task_include_user_to_all_tasks_by_type($user, array('edit proposal'));
+    }
+    drupal_goto('node/'.$node->nid);
+  }  
+}
+
+/**
+ * Callback handler for menu item (node/%node/stop_editor).
+ */
+function bf_proposal_stop_editor($node){
+  global $user;
+  if(isset($node) && 
+    $node->type == 'proposal' &&
+    variable_get('bf_proposal_can_stop_editor', 0)){
+    if(!empty($node->field_editors[LANGUAGE_NONE]) && is_array($node->field_editors[LANGUAGE_NONE])){
+      foreach ($node->field_editors[LANGUAGE_NONE] as $id=>$editor){
+        if($editor['target_id'] == $user->uid){
+          unset($node->field_editors[LANGUAGE_NONE][$id]);
+          node_submit($node);
+          node_save($node);
+          break;
+        }
+      }
+    }    
+    drupal_goto('node/'.$node->nid);
+  }
+}
+
+/**
+ * Check if user is editor of proposal.
+ */
+function bf_proposal_has_editor($uid, $node){  
+  if(empty($node) || $node->type != 'proposal') {
+    return false;
+  }  
+  if(empty($node->field_editors[LANGUAGE_NONE]) || !is_array($node->field_editors[LANGUAGE_NONE])){
+    return false;
+  }
+  foreach ($node->field_editors[LANGUAGE_NONE] as $id=>$editor){
+    if($editor['target_id'] == $uid){
+      return true; 
+    }  
+  }
+  return false;
+}
+
+/**
+ * Implements hook_token_info_alter().
+*/
+function bf_proposal_token_info_alter(&$info) {
+  $info['tokens']['node']['editors-removed'] = array(
+      'name' => t('Editors'),
+      'description' => t('Removed Editors from proposal node.'),
+  );
+  $info['tokens']['node']['editors-added'] = array(
+      'name' => t('Editors'),
+      'description' => t('Added Editors to proposal node.'),
+  );
+}
+
+/**
+ * Implements hook_tokens().
+ */
+function bf_proposal_tokens($type, $tokens, array $data = array(), array $options = array()) {
+  $sanitize = !empty($options['sanitize']);
+  $replacements = array();
+  if ($type == 'node' && !empty($data['node'])) {
+    $node = $data['node'];
+    $original_editors = array();
+    $editors = array();
+    $removed_editors = array();
+    $added_editors = array();
+    $field = field_get_items('node', $node, 'field_editors');
+    if(!empty($field)){
+      foreach ( $field as $id => $editor ) {
+        $user = user_load($editor['target_id']);
+        $editors[$user->uid] = $user;
+      }
+    }
+    if(!empty($node->original)){
+      //original node exists
+      $node_original = $node->original;
+      $field_original = field_get_items('node', $node_original, 'field_editors');
+      if(!empty($field_original)){
+        foreach ( $field_original as $editor ) {
+          //checking for removed users
+          $user = user_load($editor['target_id']);
+          $original_editors[$user->uid] = $user;
+          if(empty($editors[$user->uid])){
+            $removed_editors[] = empty($user->field_displayed_name[LANGUAGE_NONE][0]['value'])?$user->name:$user->field_displayed_name[LANGUAGE_NONE][0]['value'];
+          }
+        }
+      }
+      if(!empty($field)){
+        foreach ($field as $editor){
+          //checking for added users
+          if(empty($original_editors[$editor['target_id']])){
+            $added_editors[] = empty($editors[$editor['target_id']]->field_displayed_name[LANGUAGE_NONE][0]['value'])?$editors[$editor['target_id']]->name:$editors[$editor['target_id']]->field_displayed_name[LANGUAGE_NONE][0]['value'];
+          }
+        }
+      }
+    }
+    foreach ($tokens as $name => $original) {
+      switch ($name) {
+        case 'editors-removed':
+          $replacements[$original] = implode(', ',$removed_editors);
+          break;
+        case 'editors-added':
+          $replacements[$original] = implode(', ',$added_editors);
+          break;
+      }
+    }
+  }
+  return $replacements;
+}
+
+/**
+ * Check if user belongs to the same committee as proposal (node).
+ */
+function bf_proposal_check_user_committee($uid, $node){
+  $user = user_load($uid);
+  if(!empty($user->field_committee[LANGUAGE_NONE][0]['target_id']) &&
+  !empty($node->field_committee[LANGUAGE_NONE][0]['target_id']) &&
+  $user->field_committee[LANGUAGE_NONE][0]['target_id'] ==
+  $node->field_committee[LANGUAGE_NONE][0]['target_id']) {
+    return true;
+  }
+}
+
+/**
+ * Validate proposal node form
+ */
+function bf_proposal_form_validate($form, &$form_state) {
+  $form_state['values']['language'] = 'und';
+  $form_state['values']['title'] = $form_state['values']['title_field']['und'][0]['value'];
+  return TRUE;
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function bf_proposal_form_proposal_node_form_alter(&$form, &$form_state, $form_id) {
+  //get list of phase
+  $query = db_select('taxonomy_term_data', 't');
+  $query->leftJoin('taxonomy_vocabulary', 'v', 'v.vid = t.vid');
+  $query->condition('v.name', 'Phase');
+  $query->fields('t', array('tid', 'name'));
+  $phases = $query->execute()->fetchAllKeyed();
+
+  $forum_phase = variable_get('bf_forum_phase', 1);
+  $proposal_phase = array();
+  foreach ($phases as $id => $phase) {
+    if ($id >= $forum_phase) {
+      $proposal_phase[$id] = t($phase);
+    }
+  }
+  $form['field_phase'][LANGUAGE_NONE]['#options'] = $proposal_phase;
+  $form['field_phase'][LANGUAGE_NONE]['#default_value'] = $forum_phase;
+  if (empty($form['field_phase_end'][LANGUAGE_NONE][0]['#default_value'])) {
+    $form['field_phase_end']['#default_value'] = date('Y-m-d H:i:s', strtotime(variable_get('bf_forum_phase_end')));
+  }
+
+  $form['field_phase']['#access'] = FALSE;
+  $form['field_phase_end']['#access'] = FALSE;
+
+  $form['field_phase_end']['und'][0]['#title'] = t('Phase finisch date');
+  $form['field_phase_end']['und'][0]['#theme_wrappers'] = array();
+  $form['title']['#weight'] = -5;
+  $form['title']['#required'] = FALSE;
+  $form['title']['#access'] = FALSE;
+  $form['title']['#type'] = 'hidden';
+  $form['#attached']['js'] = array(drupal_get_path('module', 'bf_proposal') . '/js/select_editors.js');
+  $form['#attached']['css'][]=drupal_get_path('module', 'bf_proposal') . '/css/selectEditors.css';
+  $form['field_editors']['und']['#after_build']=array('bf_proposal_editors_after_build');
+  array_unshift($form['#validate'], 'bf_proposal_form_validate');
+}
+
+
+function bf_proposal_editors_after_build($form, &$form_state) {
+  $form[0]['target_id']['#attributes']['readonly']=TRUE;
+  $form[1]['target_id']['#attributes']['readonly']=TRUE;
+  return ($form);
+}
+
+/**
+ * Implements hook_preprocess_field_multiple_value_form().
+ */
+function bf_proposal_preprocess_field_multiple_value_form(&$variables) {
+  if ($variables['element']['#field_name']=='field_editors') {
+    foreach ($variables['element'] as $key=>$element) {
+      if (is_numeric($key)) {
+        bf_proposal_process_widget($variables['element'][$key]['target_id']);
+      }
+    }
+  }
+}
+
+/**
+ * Add our references dialog fields to the existing element
+ */
+function bf_proposal_process_widget(&$element) {
+  if (!isset($element['#entity_type'])) {
+    return $element;
+  }
+  $item = $element['#value'];
+  $field = field_info_field($element['#field_name']);
+  $instance = field_info_instance($element['#entity_type'], $element['#field_name'], $element['#bundle']);
+
+  $widget_settings = $instance['widget']['settings'];
+  $widget_type = $instance['widget']['type'];
+  $widgets = references_dialog_widgets();
+  // Bail if we don't have anything to do here.
+  if (!in_array($widget_type, array_keys($widgets))) {
+    return $element;
+  }
+  $dialog_widget = references_dialog_widget_load($widget_type);
+  // Attach javascript and CSS needed.
+  $attached = references_dialog_attached();
+  $element['#attached']['js'][] = $attached['js'][0];
+  $element['#attached']['js'][] = references_dialog_js_settings($element['#id'], array('format' => $dialog_widget['format']));
+  $element['#attached']['css'][] = $attached['css'][0];
+  $element['#attached']['library'][] = $attached['library'][0];
+
+  $link_options = array('attributes' => array('class' => array('references-dialog-activate')));
+  $dialog_links = array();
+  $addDeleteLink = false;
+  foreach ($dialog_widget['operations'] as $operation => $settings) {
+    if (isset($widget_settings['references_dialog_' . $operation]) && $widget_settings['references_dialog_' . $operation]) {
+      $links = $settings['function']($element, $widget_settings, $field, $instance);
+      foreach ($links as $link) {
+        if ($link['title']==REFERENCE_DIALOG_SEARCH) {
+          $link['title']=REFERENCE_DIALOG_SEARCH_REPLACE;
+        }
+        if ($link['title']==REFERENCE_DIALOG_EDIT) {
+          $addDeleteLink=true;
+          $link['attributes']['class'][]='hide';
+          $link['attributes']['class'][]='only-hide';
+        }
+        $link['attributes']['class'][] = $operation . '-dialog';
+        $dialog_links[] = references_dialog_link($link);
+      }
+    }
+  }
+
+  if (count($dialog_links)) {
+    $deleteLink = array(
+      'title'=>t('Delete editor'),
+      'href'=>'#',
+      'fragment' => '',
+      'external' => TRUE,
+      'attributes' => array(
+        'class'=>array('deleteEditor'),
+        'onclick' => 'return false;'
+      )
+    );
+
+    if (!$addDeleteLink) {
+      $deleteLink['attributes']['class'][]='hide';
+    }
+    $dialog_links[]= $deleteLink;
+    // We add a div directly into the markup here since we really need it in order
+    // to make sure the javascript works.
+    $element['#suffix'] = '<div class="dialog-links ' . $element['#id'] . '">' . theme('references_dialog_links', $dialog_links) . '</div>';
+  }
+  return $element;
+}

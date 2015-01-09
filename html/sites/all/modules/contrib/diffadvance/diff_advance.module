@@ -1,0 +1,83 @@
+<?php
+
+/**
+ * Implement of hook_menu_alter
+ */
+function diff_advance_menu_alter(&$items) {
+  $items['node/%node/revisions/view']['page callback'] = 'diff_advance_diffs_show';
+  $items['node/%node/revisions/view']['page callback'] = 'diff_advance_diffs_show';
+  // TODO: Add file pages
+}
+
+/**
+ * Implements hook_admin_paths().
+ */
+function diff_advance_admin_paths() {
+  $paths = array(
+    'node/*/revisions/view/*/*/tableview' => TRUE,
+    'node/*/revisions/view/*/*/inlinediff' => FALSE,
+  );
+  return $paths;
+}
+
+/**
+ * Implements hook_admin_paths_alter().
+ */
+function diff_advance_admin_paths_alter(&$paths) {
+  // Disable admin_path
+  // Enable it only with table views
+  // $paths['node/*/revisions/view/*/*'] = FALSE;
+}
+
+function diff_advance_trim_node_content(&$content)  {
+  $exclude = array('links', 'book_navigation', 'comments', 'print_links');
+  foreach ($content as $k => $v) {
+    if (in_array($k, $exclude)) {
+      unset($content[$k]);
+    }
+  }
+}
+
+function diff_advance_diffs_show($node, $old_vid, $new_vid) {
+  // Give a chance to view the original diff
+  $output = l('View diff in two columns version', 'node/'. $node->nid . '/revisions/view/' . $old_vid . '/' . $new_vid . '/tableview');
+  if (arg(6) == 'tableview') {
+    $output = l('View diff in inline diff version', 'node/'. $node->nid . '/revisions/view/' . $old_vid . '/' . $new_vid . '/inlinediff');
+    return $output . render(diff_diffs_show($node, $old_vid, $new_vid));
+  }
+  else {
+    if (arg(6) == '') {
+      drupal_goto('node/'. $node->nid . '/revisions/view/' . $old_vid . '/' . $new_vid . '/inlinediff');
+    }
+  }
+  $node_revisions = node_revision_list($node);
+  $old_node = node_load($node->nid, $old_vid);
+  $new_node = node_load($node->nid, $new_vid);
+
+  if (module_exists('i18n_taxonomy') ) {
+    global $language;
+    $tidNew = isset($new_node->field_phase['und'][0]['tid'])?$new_node->field_phase['und'][0]['tid']:0;
+    if ($tidNew && $term = taxonomy_term_load($tidNew)) {
+      $translate = i18n_taxonomy_term_get_translation($term,$language->language);
+      $new_node->field_phase['und'][0]['tid'] = $translate->tid;
+    }
+
+    $tidOld = isset($old_node->field_phasefield_phase['und'][0]['tid'])
+      ?$old_node->field_phasefield_phase['und'][0]['tid']:0;
+    if ($tidOld && $term = taxonomy_term_load($tidOld)) {
+      $translate = i18n_taxonomy_term_get_translation($term,$language->language);
+      $old_node->field_phase['und'][0]['tid'] = $translate->tid;
+    }
+  }
+
+
+  $view = node_view($old_node, 'full');
+  $old = drupal_render($view);
+  $view = node_view($new_node, 'full');
+  $new = drupal_render($view);
+
+
+  $output .= theme('diff_inline_metadata', array('node' => $new_node));
+  $output .= diff_get_inline($old, $new);
+  return $output;
+}

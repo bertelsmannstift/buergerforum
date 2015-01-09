@@ -1,0 +1,123 @@
+Index: patches/patch_translate_taxonomy_terms_in_inlinediff_page.patch
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- patches/patch_translate_taxonomy_terms_in_inlinediff_page.patch	(revision 5aeabdc95db0877aa97b7b9067fee08e4679344d)
++++ patches/patch_translate_taxonomy_terms_in_inlinediff_page.patch	(revision 5aeabdc95db0877aa97b7b9067fee08e4679344d)
+@@ -1,33 +0,0 @@
+-Index: sites/all/modules/contrib/diffadvance/diff_advance.module
+-IDEA additional info:
+-Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+-<+>UTF-8
+-===================================================================
+---- sites/all/modules/contrib/diffadvance/diff_advance.module	(revision 49c952dbc9198a6e89bdc91457fac11dede71201)
+-+++ sites/all/modules/contrib/diffadvance/diff_advance.module	(revision )
+-@@ -52,13 +52,24 @@
+-   }
+- 
+-   $node_revisions = node_revision_list($node);
+--
+-   $old_node = node_load($node->nid, $old_vid);
+-   $new_node = node_load($node->nid, $new_vid);
+-+  if (module_exists('i18n_taxonomy') ) {
+-+    if (isset($new_node->field_phase['und'][0]['tid']) && $translate=i18n_taxonomy_translation_term_tid
+-+    ($new_node->field_phase['und'][0]['tid'])) {
+-+      $new_node->field_phase['und'][0]['tid']=$translate;
+-+    }
+-+    if (isset($old_node->field_phasefield_phase['und'][0]['tid']) && $translate = i18n_taxonomy_translation_term_tid
+-+    ($old_node->field_phase['und'][0]['tid'])) {
+-+      $old_node->field_phase['und'][0]['tid']=$translate;
+-+    }
+-+  }
+-+
+-   $view = node_view($old_node, 'full');
+-   $old = drupal_render($view);
+-   $view = node_view($new_node, 'full');
+-   $new = drupal_render($view);
+-+
+- 
+-   $output .= theme('diff_inline_metadata', array('node' => $new_node));
+-   $output .= diff_get_inline($old, $new);
+Index: sites/all/themes/custom/bf_theme/assets/stylesheets/bf-backend.css
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/themes/custom/bf_theme/assets/stylesheets/bf-backend.css	(revision 5aeabdc95db0877aa97b7b9067fee08e4679344d)
++++ sites/all/themes/custom/bf_theme/assets/stylesheets/bf-backend.css	(revision )
+@@ -24,4 +24,13 @@
+ 
+ .page-admin-polls-history .view-polls-history .view-filters {
+ display:none;
+-}
+\ No newline at end of file
++}
++div.krumo-element {
++    color: red;
++}
++body div.status a.krumo-name {
++    color: rgb(99, 87, 87);
++}
++body div.status .krumo-preview {
++    color: rgb(99, 87, 87);
++}
+\ No newline at end of file
+Index: sites/all/modules/contrib/diffadvance/diff_advance.module
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/diffadvance/diff_advance.module	(revision 5aeabdc95db0877aa97b7b9067fee08e4679344d)
++++ sites/all/modules/contrib/diffadvance/diff_advance.module	(revision )
+@@ -50,20 +50,26 @@
+       drupal_goto('node/'. $node->nid . '/revisions/view/' . $old_vid . '/' . $new_vid . '/inlinediff');
+     }
+   }
+-
+   $node_revisions = node_revision_list($node);
+   $old_node = node_load($node->nid, $old_vid);
+   $new_node = node_load($node->nid, $new_vid);
++
+   if (module_exists('i18n_taxonomy') ) {
+-    if (isset($new_node->field_phase['und'][0]['tid']) && $translate=i18n_taxonomy_translation_term_tid
+-    ($new_node->field_phase['und'][0]['tid'])) {
+-      $new_node->field_phase['und'][0]['tid']=$translate;
++    global $language;
++    $tidNew = isset($new_node->field_phase['und'][0]['tid'])?$new_node->field_phase['und'][0]['tid']:0;
++    if ($tidNew && $term = taxonomy_term_load($tidNew)) {
++      $translate = i18n_taxonomy_term_get_translation($term,$language->language);
++      $new_node->field_phase['und'][0]['tid'] = $translate->tid;
+     }
+-    if (isset($old_node->field_phasefield_phase['und'][0]['tid']) && $translate = i18n_taxonomy_translation_term_tid
+-    ($old_node->field_phase['und'][0]['tid'])) {
+-      $old_node->field_phase['und'][0]['tid']=$translate;
++
++    $tidOld = isset($old_node->field_phasefield_phase['und'][0]['tid'])
++      ?$old_node->field_phasefield_phase['und'][0]['tid']:0;
++    if ($tidOld && $term = taxonomy_term_load($tidOld)) {
++      $translate = i18n_taxonomy_term_get_translation($term,$language->language);
++      $old_node->field_phase['und'][0]['tid'] = $translate->tid;
+     }
+   }
++
+ 
+   $view = node_view($old_node, 'full');
+   $old = drupal_render($view);
+Index: sites/all/modules/custom/bf_user_profile/bf_user_profile.module
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/custom/bf_user_profile/bf_user_profile.module	(revision 5aeabdc95db0877aa97b7b9067fee08e4679344d)
++++ sites/all/modules/custom/bf_user_profile/bf_user_profile.module	(revision )
+@@ -108,8 +108,7 @@
+   global $user;
+ 
+   if(!in_array('Admin', $user->roles) && $user->uid != 1 && !in_array('Manager', $user->roles)){
+-    $form['field_committee']['#access'] = false;
+-    $form['field_field_of_interest'] = false;
++  //  $form['field_committee']['#access'] = false;
+     $form['extparam']= false;
+     $form['field_invite']['#access'] = false;
+     if ($form['#groups']['group_extparam']) {

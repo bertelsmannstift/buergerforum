@@ -1,0 +1,9 @@
+; $Id$
+name = BF message
+description = Module customizing private messages
+core = 7.x
+package = BF
+version = 7.x-1.0
+
+dependencies[] = privatemsg
+dependencies[] = pm_email_notify

@@ -1,0 +1,49 @@
+.titles-wrapper {
+  float: left;
+  margin-top: 2.5em;
+}
+.titles-wrapper .radio-commitee {
+  margin-top: 0.4em;
+  margin-bottom: 0.4em;
+}
+.form-type-radios.form-item-commitee-first-request,
+.form-type-radios.form-item-commitee-second-request {
+  float: left;
+}
+
+#edit-commitee-set .line{
+    width: 600px;
+    overflow: auto;
+}
+#edit-commitee-set .line .label {
+    width: 330px;
+    min-height: 20px;
+    display: block;
+    float: left;
+    white-space: normal;
+    line-height: 100%;
+    margin-top: 1em;
+    margin-bottom: 1em;
+}
+
+#edit-commitee-set .line .label .description{
+    font-weight: normal;
+}
+#edit-commitee-set .line .form-item
+{
+    width: 220px;
+    float: left;
+    text-align: center;
+}
+#edit-commitee-set .line.online-discussion .label
+{
+    color: #000;
+}
+.form-type-checkbox.form-item-i-agree {
+    position: relative;
+}
+.form-type-checkbox.form-item-i-agree label[for="i_agree"]
+{
+    position: absolute;
+    top: 25px;
+}

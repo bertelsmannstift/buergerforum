@@ -1,0 +1,5 @@
+name = BF Simplenews
+description = "Automatically subscribe users in editor role to a newsletter list."
+package = BF
+core = 7.x
+dependencies[] = simplenews
