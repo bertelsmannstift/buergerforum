@@ -1,17 +1,18 @@
-#iquer.net Alles auf https leiten Anfragen von Nexum 1.1.2014
-RewriteEngine On
-RewriteCond %{SERVER_PORT} 80
-RewriteRule ^(.*)$ https://master.buergerforum2014.de/$1 [R,L]
+#Example configuration:
+#RewriteEngine On
+#RewriteCond %{SERVER_PORT} 80
+#RewriteRule ^(.*)$ https://yourdomainname.de/$1 [R,L]
 
-RewriteCond %{HTTP_HOST} !^master\.buergerforum2014\.de$ [NC] [OR]
-RewriteCond %{HTTPS_HOST} !^master\.buergerforum2014\.de$ [NC]
-RewriteRule (.*) https://master.buergerforum2014.de$1 [R=301,L]
+#Example configuration:
+#RewriteCond %{HTTP_HOST} !^yourdomainname\.de$ [NC] [OR]
+#RewriteCond %{HTTPS_HOST} !^yourdomainname\.de$ [NC]
+#RewriteRule (.*) https://yourdomainname.de$1 [R=301,L]
 
 
-AuthUserFile /srv/www/web-918/html/.htpasswd
-AuthName "Password Protected Area"
-AuthType Basic
-require valid-user
+#AuthUserFile /srv/www/web-918/html/.htpasswd
+#AuthName "Password Protected Area"
+#AuthType Basic
+#require valid-user
 
 #AuthUserFile /srv/www/web-947/html/.htpasswd
 #AuthName "Password Protected Area"

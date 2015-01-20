@@ -47,8 +47,9 @@ class owlcarousel_views_plugin_style_owlcarousel extends views_plugin_style {
   /**
    * Additionally format saved instance.
    */
-  function options_submit($form, &$form_state) {
-    parent::options_submit($form, $form_state);
+function options_submit(&$form, &$form_state) {
+     $settings = $form_state['values']['style_options'];
+     $config = array_merge($settings['settings']);
     $settings = $form_state['values']['style_options'];
     $config = array_merge($settings['settings']);
  
