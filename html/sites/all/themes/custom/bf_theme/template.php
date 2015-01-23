@@ -129,6 +129,11 @@ function bf_theme_preprocess_page(&$vars) {
     $search_box                                                 = drupal_render($search_box_form);
     $vars['search_form']                                        = (user_access('search content')) ? $search_box : NULL;
   }
+
+  $current_path = current_path();
+  if (user_is_anonymous() && $current_path == 'user') {
+    drupal_goto('');
+  }
 }
 
 /**
