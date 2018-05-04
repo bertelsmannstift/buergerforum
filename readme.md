@@ -1,3 +1,4 @@
+Das System basiert auf Drupal, das letzte Update erfolgte 2014. Es liegt in der Verantwortung des Nutzers, während der Installation der Plattform die möglichen Updates durchzuführen.
 # 1     Systemvoraussetzungen
 
 Webserver mit Apache 2.x   
